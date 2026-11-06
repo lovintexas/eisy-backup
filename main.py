@@ -3,6 +3,7 @@
 import atexit
 import json
 import os
+import signal
 import subprocess
 import sys
 import threading
@@ -69,6 +70,11 @@ def monitor_web_server():
             start_web_server()
 
 
+def handle_sigterm(signum, frame):
+    raise SystemExit(0)
+
+
+signal.signal(signal.SIGTERM, handle_sigterm)
 atexit.register(stop_web_server)
 
 
