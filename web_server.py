@@ -81,9 +81,11 @@ def get_credentials():
 
 def authenticated(request: Request):
     token = request.cookies.get(COOKIE_NAME)
-    if not backup_sessions.validate_session(token, refresh=True):
-        raise HTTPException(status_code=401, detail="Authentication required")
-    return True
+    # Background polling must not extend the session. Only explicit user
+    # activity, marked by the browser, refreshes the inactivity timeout.
+    refresh = request.headers.get("X-User-Activity") == "1"
+    if not backup_sessions.validate_session(token, refresh=refresh):
+        raise HTTPException(401, "Login required")
 
 
 def client_key(request):
@@ -151,13 +153,13 @@ class LoginRequest(BaseModel):
 class PasswordChange(BaseModel):
     current_password: str
     new_password: str
-    confirm: str
+    confirm_password: str
 
 
 class PasswordRecovery(BaseModel):
     code: str
     new_password: str
-    confirm: str
+    confirm_password: str
 
 
 @app.get("/", response_class=HTMLResponse)
@@ -172,7 +174,7 @@ def auth_status(request: Request):
 
     return {
         "setup_required": credentials is None,
-        "authenticated": backup_sessions.validate_session(token, refresh=True)
+        "authenticated": backup_sessions.validate_session(token)
     }
 
 
@@ -189,18 +191,8 @@ def setup_password(data: PasswordSetup, request: Request, response: Response):
     except ValueError as exc:
         raise HTTPException(400, str(exc))
 
-    token = backup_sessions.create_session()
-    response.set_cookie(
-        COOKIE_NAME, token,
-        max_age=COOKIE_MAX_AGE,
-        httponly=True,
-        secure=True,
-        samesite="strict",
-        path="/"
-    )
-
     LOGGER.info("Initial administrator password created")
-    return {"success": True}
+    return {"ok": True}
 
 
 @app.post("/api/auth/login")
@@ -213,45 +205,54 @@ def login(data: LoginRequest, request: Request, response: Response):
     if not check_rate_limit(login_attempts, key, 5, 300):
         raise HTTPException(429, "Too many login attempts. Try again later.")
 
-    if data.username != "admin":
-        raise HTTPException(401, "Invalid username or password")
-
     credentials = get_credentials()
 
-    if not backup_auth.check_password(data.password, *credentials):
+    if (
+        credentials is None
+        or not secrets.compare_digest(data.username, "admin")
+        or not backup_auth.check_password(data.password, *credentials)
+    ):
         raise HTTPException(401, "Invalid username or password")
 
     clear_rate_limit(login_attempts, key)
 
     token = backup_sessions.create_session()
     response.set_cookie(
-        COOKIE_NAME, token,
-        max_age=COOKIE_MAX_AGE,
+        COOKIE_NAME,
+        token,
         httponly=True,
         secure=True,
         samesite="strict",
-        path="/"
+        path="/",
     )
-
-    return {"success": True}
+    return {"ok": True}
 
 
 @app.post("/api/auth/logout")
 def logout(request: Request, response: Response):
     token = request.cookies.get(COOKIE_NAME)
     backup_sessions.revoke_session(token)
-    response.delete_cookie(COOKIE_NAME, path="/", secure=True, httponly=True, samesite="strict")
-    return {"success": True}
+    response.delete_cookie(
+        COOKIE_NAME,
+        path="/",
+        secure=True,
+        httponly=True,
+        samesite="strict",
+    )
+    return {"ok": True}
 
 
-@app.post("/api/auth/heartbeat")
-def heartbeat(auth=Depends(authenticated)):
-    return {"success": True}
+@app.post("/api/auth/heartbeat", dependencies=[Depends(authenticated)])
+def heartbeat(request: Request):
+    token = request.cookies.get(COOKIE_NAME)
+    if not backup_sessions.validate_session(token, refresh=True):
+        raise HTTPException(401, "Session expired")
+    return {"ok": True}
 
 
-@app.post("/api/auth/change-password")
-def change_password(data: PasswordChange, auth=Depends(authenticated), request: Request = None, response: Response = None):
-    if data.new_password != data.confirm:
+@app.post("/api/auth/change", dependencies=[Depends(authenticated)])
+def change_password(data: PasswordChange):
+    if data.new_password != data.confirm_password:
         raise HTTPException(400, "New passwords do not match")
 
     try:
@@ -261,10 +262,7 @@ def change_password(data: PasswordChange, auth=Depends(authenticated), request: 
 
     backup_sessions.revoke_all_sessions()
 
-    if response is not None:
-        response.delete_cookie(COOKIE_NAME, path="/", secure=True, httponly=True, samesite="strict")
-
-    return {"success": True, "message": "Password changed. Please log in again."}
+    return {"ok": True}
 
 
 @app.post("/api/auth/recover")
@@ -274,8 +272,8 @@ def recover_password(data: PasswordRecovery, request: Request, response: Respons
     if not check_rate_limit(recovery_attempts, key, 5, 900):
         raise HTTPException(429, "Too many recovery attempts")
 
-    if data.new_password != data.confirm:
-        raise HTTPException(400, "Passwords do not match")
+    if data.new_password != data.confirm_password:
+        raise HTTPException(400, "New passwords do not match")
 
     try:
         backup_auth.complete_recovery(BASE, data.code, data.new_password)
@@ -285,9 +283,15 @@ def recover_password(data: PasswordRecovery, request: Request, response: Respons
     clear_rate_limit(recovery_attempts, key)
     backup_sessions.revoke_all_sessions()
 
-    response.delete_cookie(COOKIE_NAME, path="/", secure=True, httponly=True, samesite="strict")
+    response.delete_cookie(
+        COOKIE_NAME,
+        path="/",
+        secure=True,
+        httponly=True,
+        samesite="strict",
+    )
     LOGGER.warning("Administrator password recovered")
-    return {"success": True}
+    return {"ok": True}
 
 
 class ConfigUpdate(BaseModel):
@@ -472,8 +476,18 @@ th{color:#687586}
 
 <script>
 let heartbeatTimer=null;
+let authenticatedSession=false;
+let lastActivity=0;
+const IDLE_LIMIT=3600000;
+
+["pointerdown","keydown"].forEach(eventName=>{
+ document.addEventListener(eventName,()=>{
+  if(authenticatedSession)lastActivity=Date.now();
+ },{passive:true});
+});
 
 function showAuth(title,description){
+ authenticatedSession=false;
  document.getElementById('authScreen').classList.remove('hidden');
  document.getElementById('dashboard').classList.add('hidden');
  document.getElementById('authTitle').textContent=title;
@@ -489,7 +503,7 @@ function showPanel(name){
 
 async function authStatus(){
  try{
-  const r=await fetch('/api/auth/status');
+  const r=await fetch('/api/auth/status',{credentials:'same-origin',cache:'no-store'});
   const s=await r.json();
   if(s.authenticated){showDashboard();return;}
   if(s.setup_required){
@@ -514,16 +528,19 @@ async function setupPassword(){
  if(password.length<12){authError('Password must contain at least 12 characters.');return;}
  if(password!==confirm){authError('Passwords do not match.');return;}
  try{
-  const r=await fetch('/api/auth/setup',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({password,confirm})});
+  const r=await fetch('/api/auth/setup',{method:'POST',credentials:'same-origin',cache:'no-store',headers:{'Content-Type':'application/json'},body:JSON.stringify({password,confirm})});
   const d=await r.json();
   if(!r.ok)throw new Error(d.detail||'Setup failed');
-  showDashboard();
+  document.getElementById('setupPassword').value='';
+  document.getElementById('setupConfirm').value='';
+  showLogin();
+  authError('Administrator password created. Please log in.');
  }catch(e){authError(e.message);}
 }
 
 async function login(){
  try{
-  const r=await fetch('/api/auth/login',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({username:document.getElementById('loginUsername').value,password:document.getElementById('loginPassword').value})});
+  const r=await fetch('/api/auth/login',{method:'POST',credentials:'same-origin',cache:'no-store',headers:{'Content-Type':'application/json'},body:JSON.stringify({username:document.getElementById('loginUsername').value,password:document.getElementById('loginPassword').value})});
   const d=await r.json();
   if(!r.ok)throw new Error(d.detail||'Login failed');
   document.getElementById('loginPassword').value='';
@@ -551,7 +568,7 @@ async function recoverPassword(){
  if(password.length<12){authError('Password must contain at least 12 characters.');return;}
  if(password!==confirm){authError('Passwords do not match.');return;}
  try{
-  const r=await fetch('/api/auth/recover',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({code,new_password:password,confirm})});
+  const r=await fetch('/api/auth/recover',{method:'POST',credentials:'same-origin',cache:'no-store',headers:{'Content-Type':'application/json'},body:JSON.stringify({code,new_password:password,confirm_password:confirm})});
   const d=await r.json();
   if(!r.ok)throw new Error(d.detail||'Recovery failed');
   showLogin();
@@ -561,21 +578,30 @@ async function recoverPassword(){
 
 async function logout(){
  if(heartbeatTimer)clearInterval(heartbeatTimer);
- await fetch('/api/auth/logout',{method:'POST'});
+ await fetch('/api/auth/logout',{method:'POST',credentials:'same-origin',cache:'no-store'});
+ authenticatedSession=false;
  authStatus();
 }
 
 function showDashboard(){
+ authenticatedSession=true;
+ lastActivity=Date.now();
  document.getElementById('authScreen').classList.add('hidden');
  document.getElementById('dashboard').classList.remove('hidden');
  loadConfig();
  refreshAll();
  if(heartbeatTimer)clearInterval(heartbeatTimer);
  heartbeatTimer=setInterval(async()=>{
-  const r=await fetch('/api/auth/heartbeat',{method:'POST'});
-  if(r.status===401){clearInterval(heartbeatTimer);authStatus();}
- },300000);
+  if(!authenticatedSession || Date.now()-lastActivity>=60000)return;
+  const r=await fetch('/api/auth/heartbeat',{method:'POST',credentials:'same-origin',cache:'no-store'});
+  if(r.status===401){authenticatedSession=false;clearInterval(heartbeatTimer);authStatus();}
+ },30000);
 }
+
+setInterval(()=>{
+ if(authenticatedSession && Date.now()-lastActivity>=IDLE_LIMIT)logout();
+},30000);
+
 
 function showChangePassword(){
  document.getElementById('changePanel').classList.toggle('hidden');
@@ -587,7 +613,7 @@ async function changePassword(){
  const confirm=document.getElementById('newConfirm').value;
  if(new_password.length<12){document.getElementById('changeMessage').textContent='Password must contain at least 12 characters.';return;}
  try{
-  const r=await fetch('/api/auth/change-password',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({current_password,new_password,confirm})});
+  const r=await fetch('/api/auth/change',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({current_password,new_password,confirm_password:confirm})});
   const d=await r.json();
   if(!r.ok)throw new Error(d.detail||'Password change failed');
   if(heartbeatTimer)clearInterval(heartbeatTimer);
@@ -597,7 +623,11 @@ async function changePassword(){
 }
 
 async function apiFetch(url,options={}){
- const r=await fetch(url,options);
+ const headers={...(options.headers||{})};
+ if(authenticatedSession && Date.now()-lastActivity<60000){
+  headers['X-User-Activity']='1';
+ }
+ const r=await fetch(url,{...options,headers,credentials:'same-origin',cache:'no-store'});
  if(r.status===401){authStatus();throw new Error('Session expired. Please log in again.');}
  return r;
 }
