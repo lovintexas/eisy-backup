@@ -18,6 +18,8 @@ MAX_RECOVERY_ATTEMPTS = 5
 def auth_directory(base_dir):
     directory = Path(base_dir) / "persist"
     directory.mkdir(parents=True, exist_ok=True)
+    os.chmod(directory, 0o750)
+    subprocess.run(["setfacl", "-m", "u:polyglot:x:allow", str(directory)], check=True)
     return directory
 
 
@@ -52,6 +54,7 @@ def atomic_write(path, content):
             os.fsync(output.fileno())
 
         os.chmod(temporary, 0o600)
+        subprocess.run(["setfacl", "-m", "u:polyglot:r:allow", temporary], check=True)
         if path.name == "web_auth.txt":
             subprocess.run(
                 ["setfacl", "-m", "u:eisyui:r:allow", temporary],
@@ -131,6 +134,9 @@ def create_initial_password(base_dir, password):
         output.write(f"{salt.hex()}:{digest.hex()}\n")
         output.flush()
         os.fsync(output.fileno())
+
+    os.chmod(path, 0o600)
+    subprocess.run(["setfacl", "-m", "u:polyglot:r:allow", str(path)], check=True)
 
     return salt, digest
 

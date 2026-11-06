@@ -1,6 +1,7 @@
 #!/usr/bin/env python3
 
 import logging
+import subprocess
 import secrets
 import threading
 import time
@@ -70,6 +71,7 @@ def save_config(data):
     temp = path.with_suffix(".tmp")
     temp.write_text(json.dumps(data, indent=2))
     temp.chmod(0o600)
+    subprocess.run(["setfacl", "-m", "u:polyglot:r:allow", str(temp)], check=True)
     temp.replace(path)
 
 

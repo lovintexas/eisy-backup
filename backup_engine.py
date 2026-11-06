@@ -5,6 +5,7 @@ import socket
 import json
 import zipfile
 import logging
+import subprocess
 import threading
 import shutil
 
@@ -53,6 +54,7 @@ def save_history(history, directory):
     temp = path.with_suffix(".tmp")
     temp.write_text(json.dumps(history, indent=2))
     temp.chmod(0o600)
+    subprocess.run(["setfacl", "-m", "u:polyglot:r:allow", str(temp)], check=True)
     temp.replace(path)
 
 
@@ -85,6 +87,8 @@ def create_backup(directory="/var/eisy-backups", retention=7):
 
     try:
         destination.mkdir(parents=True, exist_ok=True)
+        destination.chmod(0o750)
+        subprocess.run(["setfacl", "-m", "u:polyglot:x:allow", str(destination)], check=True)
 
         if history_file.exists():
             try:
