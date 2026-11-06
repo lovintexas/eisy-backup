@@ -45,6 +45,7 @@ def start_web_server():
         ssl_certfile=str(cert),
         ssl_keyfile=str(key),
         access_log=False,
+        log_config=None,
     )
 
     web_server = uvicorn.Server(config)
