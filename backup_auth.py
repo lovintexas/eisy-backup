@@ -137,6 +137,7 @@ def create_initial_password(base_dir, password):
 
     os.chmod(path, 0o600)
     subprocess.run(["setfacl", "-m", "u:polyglot:r:allow", str(path)], check=True)
+    subprocess.run(["setfacl", "-m", "u:eisyui:r:allow", str(path)], check=True)
 
     return salt, digest
 
