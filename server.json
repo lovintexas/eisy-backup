@@ -1,0 +1,11 @@
+{
+  "name": "eisy Backup",
+  "type": "python3",
+  "executable": "main.py",
+  "install": "install.sh",
+  "description": "Automated encrypted eisy backups to Google Drive with scheduling, retention, and IoX status monitoring.",
+  "notice": "Requires Allow Unrestricted ISY Access to create native eisy backups. Google Drive authorization will be configured through the plugin web interface.",
+  "isyAccess": true,
+  "shortPoll": 60,
+  "longPoll": 300
+}

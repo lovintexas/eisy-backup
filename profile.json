@@ -1,0 +1,48 @@
+{
+  "editors": [
+    {
+      "id": "backup_status",
+      "ranges": [
+        {
+          "uom": "25",
+          "subset": "0,1,2,3",
+          "names": {
+            "0": "Not Configured",
+            "1": "Ready",
+            "2": "Backing Up",
+            "3": "Error"
+          }
+        }
+      ]
+    }
+  ],
+  "linkdefs": [],
+  "nodedefs": [
+    {
+      "id": "controller",
+      "name": "eisy Backup",
+      "icon": "GenericCtl",
+      "properties": [
+        {
+          "id": "ST",
+          "name": "Backup Status",
+          "editor": "backup_status"
+        }
+      ],
+      "cmds": {
+        "sends": [],
+        "accepts": [
+          {
+            "id": "QUERY",
+            "name": "Query",
+            "native": "false"
+          }
+        ]
+      },
+      "links": {
+        "ctl": [],
+        "rsp": []
+      }
+    }
+  ]
+}
