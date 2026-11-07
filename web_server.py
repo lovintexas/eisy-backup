@@ -10,7 +10,7 @@ from pathlib import Path
 from datetime import datetime
 
 from fastapi import FastAPI, Depends, HTTPException, Request, Response
-from fastapi.responses import HTMLResponse
+from fastapi.responses import HTMLResponse, FileResponse
 from pydantic import BaseModel, Field
 
 from backup_engine import create_backup, get_history, DEFAULT_BACKUP_DIRECTORY
@@ -499,9 +499,59 @@ def google_status(auth=Depends(authenticated)):
             return {"status": "error"}
 
 
+@app.get("/api/backup/download/{filename}")
+def download_backup(filename: str, auth=Depends(authenticated)):
+    import re
+
+    if not re.fullmatch(r"eisy-backup-\d{4}-\d{2}-\d{2}-\d{6}\.zip", filename):
+        raise HTTPException(404, "Backup not found")
+
+    records = get_history()
+    if not any(
+        item.get("filename") == filename
+        and item.get("status") == "successful"
+        for item in records
+    ):
+        raise HTTPException(404, "Backup not found in successful history")
+
+    directory = Path(BACKUP_DIRECTORY).resolve()
+    path = directory / filename
+
+    if not path.is_file() or path.is_symlink():
+        raise HTTPException(404, "Backup not available locally")
+
+    return FileResponse(
+        path,
+        media_type="application/zip",
+        filename=filename,
+        headers={"Cache-Control": "no-store"}
+    )
+
+
 @app.get("/api/history")
 def history(auth=Depends(authenticated)):
-    return get_history()
+    import re
+
+    directory = Path(BACKUP_DIRECTORY).resolve()
+    records = get_history()
+
+    for record in records:
+        filename = record.get("filename")
+        available = False
+
+        if isinstance(filename, str) and re.fullmatch(
+            r"eisy-backup-\d{4}-\d{2}-\d{2}-\d{6}\.zip", filename
+        ):
+            path = directory / filename
+            available = (
+                record.get("status") == "successful"
+                and path.is_file()
+                and not path.is_symlink()
+            )
+
+        record["local_available"] = available
+
+    return records
 
 
 @app.get("/api/status")
@@ -925,23 +975,60 @@ async function refreshStatus(){
  }catch(e){}
 }
 
+function escapeHtml(value){
+ return String(value??'').replace(/[&<>"']/g,c=>({
+  '&':'&amp;',
+  '<':'&lt;',
+  '>':'&gt;',
+  '"':'&quot;',
+  "'":'&#39;'
+ })[c]);
+}
+
 async function refreshHistory(){
  try{
   const r=await apiFetch('/api/history');const items=await r.json();
   if(!items.length){document.getElementById('history').textContent='No backups yet.';return;}
-  let html='<table><thead><tr><th>Date</th><th>Result</th><th>Filename</th><th>Size</th><th>Cloud</th></tr></thead><tbody>';
+  let html='<table><thead><tr><th>Date</th><th>Result</th><th>Filename</th><th>Size</th><th>Cloud</th><th>Download</th></tr></thead><tbody>';
   for(const item of items){
    const date=new Date(item.date).toLocaleString();
    const size=item.size?(item.size/1048576).toFixed(1)+' MB':'—';
    const success=item.status==='successful'||(item.status===undefined&&item.successful);
    const result=success?'<span style="color:#25804b">Success</span>':item.status==='running'?'<span>Running</span>':'<span style="color:#b42318">Failed</span>';
-   html+='<tr><td>'+date+'</td><td>'+result+'</td><td>'+item.filename+'</td><td>'+size+'</td><td>'+(item.google_drive||'—')+'</td></tr>';
-   if(item.error)html+='<tr><td colspan="5" style="color:#b42318">Error: '+item.error+'</td></tr>';
+   const filename=escapeHtml(item.filename||'—');
+   const download=item.local_available
+    ? '<button type="button" class="download-backup" data-filename="'+filename+'">Download</button>'
+    : '—';
+   html+='<tr><td>'+date+'</td><td>'+result+'</td><td>'+filename+'</td><td>'+size+'</td><td>'+escapeHtml(item.google_drive||'—')+'</td><td>'+download+'</td></tr>';
+   if(item.error)html+='<tr><td colspan="6" style="color:#b42318">Error: '+item.error+'</td></tr>';
   }
   html+='</tbody></table>';
   document.getElementById('history').innerHTML=html;
  }catch(e){document.getElementById('history').textContent='Unable to load history.';}
 }
+
+async function downloadBackup(filename){
+ try{
+  const r=await apiFetch('/api/backup/download/'+encodeURIComponent(filename));
+  if(!r.ok)throw new Error('Backup download unavailable');
+  const blob=await r.blob();
+  const url=URL.createObjectURL(blob);
+  const a=document.createElement('a');
+  a.href=url;
+  a.download=filename;
+  document.body.appendChild(a);
+  a.click();
+  a.remove();
+  setTimeout(()=>URL.revokeObjectURL(url),60000);
+ }catch(e){
+  alert(e.message);
+ }
+}
+
+document.getElementById('history').addEventListener('click',function(event){
+ const button=event.target.closest('button.download-backup');
+ if(button)downloadBackup(button.dataset.filename);
+});
 
 async function refreshAll(){await refreshStatus();await refreshHistory();}
 
