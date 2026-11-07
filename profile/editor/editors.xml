@@ -1,10 +1,9 @@
-<?xml version="1.0" encoding="UTF-8"?>
+<?xml version='1.0' encoding='UTF-8'?>
 <editors>
   <editor id="BackupStatus">
-    <range uom="25" subset="0,1,2,3" nls="BACKUPSTATUS"/>
+    <range uom="25" subset="0,1,2,3" nls="BACKUPSTATUS" />
   </editor>
-
   <editor id="BackupRetention">
-    <range uom="56" min="1" max="365" prec="0"/>
+    <range uom="56" min="1" max="30" prec="0" />
   </editor>
 </editors>
