@@ -33,3 +33,4 @@ google_auth/
 *.patch
 *.bak
 __pycache__/
+google_oauth_client.json
