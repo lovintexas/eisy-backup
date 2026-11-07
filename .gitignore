@@ -21,3 +21,15 @@ persist/
 
 # Development rollback copies
 *.pre-auth
+
+# Private Google authorization
+google_auth/
+
+# Development files
+*.pre-https
+*.pre-polling
+*.before-jwt-test
+*.pre-auth
+*.patch
+*.bak
+__pycache__/

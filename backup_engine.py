@@ -1,6 +1,7 @@
 #!/usr/bin/env python3
 
 import http.client
+import os
 import ssl
 import json
 import zipfile
@@ -17,7 +18,7 @@ LOGGER = logging.getLogger("eisy-backup")
 EISY_UI_HOST = "127.0.0.1"
 EISY_UI_PORT = 443
 BACKUP_LOCK = threading.Lock()
-DEFAULT_BACKUP_DIRECTORY = str(Path(__file__).resolve().parent / "persist" / "backups")
+DEFAULT_BACKUP_DIRECTORY = "/var/tmp/eisy-backup-{}".format(os.getuid())
 
 
 def grant_eisyui_backup_access():
@@ -86,8 +87,11 @@ def api_request(path, token, stream=False):
         raise
 
 
+HISTORY_FILE = Path(__file__).resolve().parent / "persist" / "backup_history.json"
+
+
 def save_history(history, directory):
-    path = Path(directory) / "history.json"
+    path = HISTORY_FILE
     temp = path.with_suffix(".tmp")
     temp.write_text(json.dumps(history, indent=2))
     temp.chmod(0o600)
@@ -95,164 +99,102 @@ def save_history(history, directory):
     temp.replace(path)
 
 
-def create_backup(directory=DEFAULT_BACKUP_DIRECTORY, retention=7, token=None):
+def create_backup(directory=DEFAULT_BACKUP_DIRECTORY, retention=7, token=None,
+                  google_auth_directory=None, google_folder="eisy Backups"):
+    """Create, verify, upload, and remove a temporary native backup ZIP."""
+    import google_drive
     if not BACKUP_LOCK.acquire(blocking=False):
         raise RuntimeError("A backup is already running")
-
-    destination = Path(directory)
-    temp_path = None
-    conn = None
-
-    timestamp = datetime.now(ZoneInfo("America/Chicago"))
+    destination = Path(DEFAULT_BACKUP_DIRECTORY)  # Never accept user-controlled backup locations.
+    timestamp = datetime.now().astimezone()
     filename = "eisy-backup-" + timestamp.strftime("%Y-%m-%d-%H%M%S") + ".zip"
-
-    record = {
-        "filename": filename,
-        "date": timestamp.isoformat(),
-        "started": timestamp.isoformat(),
-        "completed": None,
-        "size": 0,
-        "path": str(destination / filename),
-        "status": "running",
-        "successful": False,
-        "error": None,
-        "google_drive": "Pending"
-    }
-
+    record = {"filename": filename, "date": timestamp.isoformat(),
+              "started": timestamp.isoformat(), "completed": None,
+              "size": 0, "path": None, "status": "running",
+              "successful": False, "error": None, "google_drive": "Pending"}
     history = []
-    history_file = destination / "history.json"
-
+    partial = destination / (filename + ".part")
+    archive_path = destination / filename
+    conn = None
+    uploaded = False
     try:
-        destination.mkdir(parents=True, exist_ok=True)
-        destination.chmod(0o750)
-        subprocess.run(["setfacl", "-m", "u:polyglot:x:allow", str(destination)], check=True)
-
-        if history_file.exists():
+        if google_auth_directory is None:
+            raise RuntimeError("Google Drive authorization directory unavailable")
+        auth_dir = Path(google_auth_directory)
+        client_id, client_secret = google_drive.load_client_credentials()
+        # Fail before creating a native backup if authorization has expired.
+        access_token = google_drive.refresh_access_token(client_id, client_secret, auth_dir)
+        destination.mkdir(mode=0o700, parents=True, exist_ok=True)
+        destination.chmod(0o700)
+        if HISTORY_FILE.exists():
             try:
-                history = json.loads(history_file.read_text())
+                history = json.loads(HISTORY_FILE.read_text())
             except Exception:
-                LOGGER.exception("Unable to read previous history")
-                history = []
-
-        # Record the attempt before doing any backup work.
+                LOGGER.exception("Unable to read backup history")
         history.insert(0, record.copy())
         save_history(history, destination)
-
-        LOGGER.info("Granting eisy-ui access to persistent plugin files")
         grant_eisyui_backup_access()
-
-        LOGGER.info("Requesting native eisy backup")
-
         result = api_request("/api/system/backup/create", token)
-        meta = result["meta"]
-        download_path = result["downloadPath"]
-
-        temp_path = destination / (filename + ".part")
-        final_path = destination / filename
-
-        LOGGER.info("Downloading native backup: %s", filename)
-
-        conn, response = api_request(download_path, token, stream=True)
-
-        try:
-            if response.status != 200:
-                raise RuntimeError(f"Download failed: HTTP {response.status}")
-
-            with temp_path.open("wb") as output:
-                shutil.copyfileobj(response, output, length=1024 * 1024)
-        finally:
-            conn.close()
-            conn = None
-
-        if not temp_path.exists() or temp_path.stat().st_size == 0:
+        metadata = result["meta"]
+        conn, response = api_request(result["downloadPath"], token, stream=True)
+        with partial.open("wb") as output:
+            shutil.copyfileobj(response, output, length=1024 * 1024)
+        conn.close()
+        conn = None
+        if partial.stat().st_size == 0:
             raise RuntimeError("Downloaded backup is empty")
-
-        LOGGER.info("Verifying backup archive")
-
-        with zipfile.ZipFile(temp_path, "r") as archive:
+        with zipfile.ZipFile(partial, "r") as archive:
             bad_file = archive.testzip()
             if bad_file:
                 raise RuntimeError(f"ZIP integrity failure: {bad_file}")
-
-        temp_path.replace(final_path)
-
-        record.update({
-            "status": "successful",
-            "successful": True,
-            "completed": datetime.now(ZoneInfo("America/Chicago")).isoformat(),
-            "size": final_path.stat().st_size,
-            "metadata": meta,
-            "error": None
-        })
-
-        # Update the existing attempt record.
+        partial.replace(archive_path)
+        record["size"] = archive_path.stat().st_size
+        folder_id = google_drive.ensure_backup_folder(access_token, google_folder)
+        cloud_file = google_drive.upload_backup(archive_path, access_token, folder_id)
+        uploaded = True
+        record.update({"status": "successful", "successful": True,
+                       "completed": datetime.now().astimezone().isoformat(),
+                       "metadata": metadata, "google_drive": "Uploaded",
+                       "google_file_id": cloud_file["id"], "error": None})
         history[0] = record.copy()
-        save_history(history, destination)
-
-        # Retain the configured number of successful ZIP files.
-        keep = max(1, int(retention))
-        local_backups = sorted(
-            destination.glob("eisy-backup-*.zip"),
-            key=lambda p: p.stat().st_mtime,
-            reverse=True
-        )
-
-        for old_backup in local_backups[keep:]:
-            LOGGER.info("Removing expired backup: %s", old_backup.name)
-            old_backup.unlink()
-
-        retained = {p.name for p in local_backups[:keep]}
-
-        # Preserve failed attempts; remove only history for expired ZIPs.
-        history = [
-            item for item in history
-            if item.get("status") != "successful"
-            or item.get("filename") in retained
-        ]
-
-        # Keep the most recent 100 attempts.
-        history = history[:100]
-        save_history(history, destination)
-
-        LOGGER.info("Backup completed successfully: %s", filename)
-        return record
-
-    except Exception as exc:
-        LOGGER.exception("Backup creation failed")
-
-        record.update({
-            "status": "failed",
-            "successful": False,
-            "completed": datetime.now(ZoneInfo("America/Chicago")).isoformat(),
-            "error": str(exc),
-            "google_drive": "Not uploaded"
-        })
-
-        # Preserve the failed attempt even when creation or download fails.
+        save_history(history[:100], destination)
+        # Retention failure is a warning, not a failed backup: upload is verified.
         try:
-            if history:
-                history[0] = record.copy()
-            else:
-                history.insert(0, record.copy())
-
-            history = history[:100]
-            save_history(history, destination)
+            google_drive.enforce_retention(access_token, folder_id, retention)
+        except Exception as exc:
+            LOGGER.exception("Google Drive retention failed")
+            record["retention_warning"] = str(exc)
+            history[0] = record.copy()
+            save_history(history[:100], destination)
+        return record
+    except Exception as exc:
+        LOGGER.exception("Backup/upload failed")
+        record.update({"status": "failed", "successful": False,
+                       "completed": datetime.now().astimezone().isoformat(),
+                       "error": str(exc),
+                       "google_drive": "Upload unverified" if not uploaded else "Uploaded"})
+        if history:
+            history[0] = record.copy()
+        else:
+            history.insert(0, record.copy())
+        try:
+            save_history(history[:100], destination)
         except Exception:
-            LOGGER.exception("Unable to save failed backup history")
-
-        if temp_path and temp_path.exists():
-            temp_path.unlink()
-
+            LOGGER.exception("Unable to save failure history")
         raise
-
     finally:
         if conn:
             conn.close()
+        for item in (partial, archive_path):
+            try:
+                item.unlink(missing_ok=True)
+            except Exception:
+                LOGGER.exception("Unable to remove temporary backup %s", item)
         BACKUP_LOCK.release()
 
 
 def get_history(directory=DEFAULT_BACKUP_DIRECTORY):
-    history_file = Path(directory) / "history.json"
+    history_file = HISTORY_FILE
 
     if not history_file.exists():
         return []

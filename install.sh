@@ -1,5 +1,6 @@
 #!/usr/bin/env bash
 set -e
+echo "INSTALL USER: $(id)"
 
 cd "$(dirname "$0")"
 

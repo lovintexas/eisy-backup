@@ -13,12 +13,16 @@ from fastapi import FastAPI, Depends, HTTPException, Request, Response
 from fastapi.responses import HTMLResponse
 from pydantic import BaseModel, Field
 
-from backup_engine import create_backup, get_history
+from backup_engine import create_backup, get_history, DEFAULT_BACKUP_DIRECTORY
 import backup_auth
 import backup_sessions
+import google_drive
 
 BASE = Path(__file__).resolve().parent
 PERSIST = BASE / "persist"
+GOOGLE_AUTH_DIRECTORY = BASE / "google_auth"
+GOOGLE_AUTH_DIRECTORY.mkdir(mode=0o700, exist_ok=True)
+GOOGLE_AUTH_DIRECTORY.chmod(0o700)
 PERSIST.mkdir(parents=True, exist_ok=True)
 
 logging.basicConfig(level=logging.INFO)
@@ -35,7 +39,7 @@ def set_eisy_ui_token(token):
 
 
 
-BACKUP_DIRECTORY = str(PERSIST / "backups")
+BACKUP_DIRECTORY = DEFAULT_BACKUP_DIRECTORY
 COOKIE_NAME = "eisy_backup_session"
 COOKIE_MAX_AGE = 3600
 
@@ -57,8 +61,6 @@ DEFAULT_CONFIG = {
     "schedule": "daily",
     "backup_time": "02:00",
     "retention": 7,
-    "backup_directory": BACKUP_DIRECTORY,
-    "google_drive_enabled": False,
     "google_drive_folder": "eisy Backups"
 }
 
@@ -68,7 +70,7 @@ def load_config():
     if path.exists():
         try:
             import json
-            return {**DEFAULT_CONFIG, **json.loads(path.read_text())}
+            return {**DEFAULT_CONFIG, **{k: v for k, v in json.loads(path.read_text()).items() if k in DEFAULT_CONFIG}}
         except Exception:
             LOGGER.exception("Configuration read failed")
     return DEFAULT_CONFIG.copy()
@@ -130,9 +132,10 @@ def backup_worker():
             raise RuntimeError("eisy-ui authentication token unavailable")
 
         result = create_backup(
-            directory=config["backup_directory"],
             retention=config["retention"],
-            token=EISY_UI_TOKEN
+            token=EISY_UI_TOKEN,
+            google_auth_directory=GOOGLE_AUTH_DIRECTORY,
+            google_folder=config["google_drive_folder"]
         )
 
         with state_lock:
@@ -312,9 +315,7 @@ class ConfigUpdate(BaseModel):
     schedule: str = Field(pattern="^(daily|weekly|manual)$")
     backup_time: str = Field(pattern="^([01][0-9]|2[0-3]):[0-5][0-9]$")
     retention: int = Field(ge=1, le=365)
-    backup_directory: str
-    google_drive_enabled: bool = False
-    google_drive_folder: str
+    google_drive_folder: str = "eisy Backups"
 
 
 @app.get("/api/config")
@@ -331,6 +332,8 @@ def update_config(data: ConfigUpdate, auth=Depends(authenticated)):
 
 @app.post("/api/backup")
 def start_backup(auth=Depends(authenticated)):
+    if not (google_drive.load_tokens(GOOGLE_AUTH_DIRECTORY) or {}).get("refresh_token"):
+        raise HTTPException(409, "Connect Google Drive before backing up")
     with state_lock:
         if backup_state["running"]:
             raise HTTPException(409, "Backup already running")
@@ -343,9 +346,101 @@ def start_backup(auth=Depends(authenticated)):
     return {"success": True, "message": "Backup started"}
 
 
+google_auth_lock = threading.Lock()
+google_auth_state = {}
+
+
+@app.post("/api/google/start")
+def google_start(auth=Depends(authenticated)):
+    try:
+        client_id, client_secret = google_drive.load_client_credentials(GOOGLE_AUTH_DIRECTORY)
+        result = google_drive.start_device_authorization(client_id)
+
+        import time
+        with google_auth_lock:
+            google_auth_state.clear()
+            google_auth_state.update({
+                "device_code": result["device_code"],
+                "client_id": client_id,
+                "client_secret": client_secret,
+                "expires_at": time.monotonic() + result["expires_in"],
+                "interval": result.get("interval", 5),
+                "next_poll": time.monotonic() + result.get("interval", 5),
+                "status": "pending",
+            })
+
+        return {
+            "user_code": result["user_code"],
+            "verification_url": result["verification_url"],
+            "expires_in": result["expires_in"],
+            "interval": result.get("interval", 5),
+        }
+    except Exception as exc:
+        LOGGER.exception("Google authorization start failed")
+        raise HTTPException(502, str(exc))
+
+
+@app.get("/api/google/connection")
+def google_connection(auth=Depends(authenticated)):
+    tokens = google_drive.load_tokens(GOOGLE_AUTH_DIRECTORY)
+    return {
+        "connected": bool(tokens and tokens.get("refresh_token"))
+    }
+
+
+@app.get("/api/google/status")
+def google_status(auth=Depends(authenticated)):
+    import time
+
+    with google_auth_lock:
+        if not google_auth_state:
+            return {"status": "idle"}
+
+        if google_auth_state["status"] == "authorized":
+            return {"status": "authorized"}
+
+        if time.monotonic() >= google_auth_state["expires_at"]:
+            google_auth_state.clear()
+            return {"status": "expired"}
+
+        if time.monotonic() < google_auth_state["next_poll"]:
+            return {"status": "pending"}
+
+        google_auth_state["next_poll"] = (
+            time.monotonic() + google_auth_state["interval"]
+        )
+
+        try:
+            result = google_drive.poll_device_authorization(
+                google_auth_state["client_id"],
+                google_auth_state["client_secret"],
+                google_auth_state["device_code"],
+            )
+
+            status = result["status"]
+
+            if status == "authorized":
+                google_drive.save_tokens(result["tokens"], GOOGLE_AUTH_DIRECTORY)
+                google_auth_state.clear()
+                google_auth_state["status"] = "authorized"
+                return {"status": "authorized"}
+
+            if status == "slow_down":
+                google_auth_state["interval"] += 5
+
+            if status in ("access_denied", "expired_token"):
+                google_auth_state.clear()
+
+            return {"status": status}
+
+        except Exception:
+            LOGGER.exception("Google authorization polling failed")
+            return {"status": "error"}
+
+
 @app.get("/api/history")
 def history(auth=Depends(authenticated)):
-    return get_history(load_config()["backup_directory"])
+    return get_history()
 
 
 @app.get("/api/status")
@@ -456,8 +551,8 @@ th{color:#687586}
 <div><label>Backup time</label><input id="backup_time" type="time"></div>
 </div>
 <div class="grid">
-<div><label>Local backups to retain</label><input id="retention" type="number" min="1" max="365"></div>
-<div><label>Local backup directory</label><input id="backup_directory" type="text"></div>
+<div><label>Google Drive backups to retain</label><input id="retention" type="number" min="1" max="365"></div>
+<div><label>Google Drive folder</label><input id="google_drive_folder" type="text" value="eisy Backups"></div>
 </div>
 <button onclick="saveConfig()">Save settings</button>
 <div id="configMessage" class="note"></div>
@@ -470,8 +565,18 @@ th{color:#687586}
 
 <div class="card">
 <h2>Google Drive</h2>
-<div class="status">Not connected</div>
-<p class="note">Google Drive authorization and uploads will be added in a later version.</p>
+<div id="googleStatus" class="status">Not connected</div>
+
+<button id="googleConnectButton" onclick="connectGoogle()">Connect Google Drive</button>
+
+<div id="googleAuthorization" class="hidden">
+<p>Open <a id="googleVerificationLink" href="https://www.google.com/device"
+target="_blank" rel="noopener noreferrer">Google device authorization</a>
+and enter this code:</p>
+<h2 id="googleUserCode"></h2>
+</div>
+
+<p id="googleMessage" class="note"></p>
 </div>
 
 <div class="card">
@@ -489,6 +594,8 @@ th{color:#687586}
 
 <script>
 let heartbeatTimer=null;
+let backupPollTimer=null;
+let lastObservedBackupRunning=false;
 let authenticatedSession=false;
 let lastActivity=0;
 const IDLE_LIMIT=3600000;
@@ -501,6 +608,7 @@ const IDLE_LIMIT=3600000;
 
 function showAuth(title,description){
  authenticatedSession=false;
+ if(backupPollTimer){clearInterval(backupPollTimer);backupPollTimer=null;}
  document.getElementById('authScreen').classList.remove('hidden');
  document.getElementById('dashboard').classList.add('hidden');
  document.getElementById('authTitle').textContent=title;
@@ -602,7 +710,13 @@ function showDashboard(){
  document.getElementById('authScreen').classList.add('hidden');
  document.getElementById('dashboard').classList.remove('hidden');
  loadConfig();
+ loadGoogleConnection();
  refreshAll();
+ if(backupPollTimer)clearInterval(backupPollTimer);
+ lastObservedBackupRunning=false;
+ backupPollTimer=setInterval(()=>{
+  if(authenticatedSession)refreshStatus();
+ },3000);
  if(heartbeatTimer)clearInterval(heartbeatTimer);
  heartbeatTimer=setInterval(async()=>{
   if(!authenticatedSession || Date.now()-lastActivity>=60000)return;
@@ -645,11 +759,83 @@ async function apiFetch(url,options={}){
  return r;
 }
 
+
+let googlePollTimer=null;
+
+async function connectGoogle(){
+ const message=document.getElementById('googleMessage');
+ const button=document.getElementById('googleConnectButton');
+ button.disabled=true;
+ message.textContent='Requesting Google authorization...';
+
+ try{
+  const r=await apiFetch('/api/google/start',{method:'POST'});
+  const d=await r.json();
+  if(!r.ok)throw new Error(d.detail||'Unable to start authorization');
+
+  document.getElementById('googleVerificationLink').href=d.verification_url;
+  document.getElementById('googleUserCode').textContent=d.user_code;
+  document.getElementById('googleAuthorization').classList.remove('hidden');
+  document.getElementById('googleStatus').textContent='Waiting for authorization';
+  message.textContent='Enter the code at Google, then return here.';
+
+  if(googlePollTimer)clearInterval(googlePollTimer);
+  googlePollTimer=setInterval(checkGoogleAuthorization,Math.max(5,d.interval)*1000);
+ }catch(e){
+  message.textContent=e.message;
+  button.disabled=false;
+ }
+}
+
+async function checkGoogleAuthorization(){
+ if(!authenticatedSession){
+  clearInterval(googlePollTimer);
+  googlePollTimer=null;
+  return;
+ }
+
+ try{
+  const r=await apiFetch('/api/google/status');
+  const d=await r.json();
+  if(!r.ok)throw new Error(d.detail||'Authorization check failed');
+
+  if(d.status==='authorized'){
+   clearInterval(googlePollTimer);
+   googlePollTimer=null;
+   document.getElementById('googleStatus').textContent='Connected';
+   document.getElementById('googleAuthorization').classList.add('hidden');
+   document.getElementById('googleMessage').textContent='Google Drive connected successfully.';
+   document.getElementById('googleConnectButton').disabled=false;
+  }else if(['expired','expired_token','access_denied','idle'].includes(d.status)){
+   clearInterval(googlePollTimer);
+   googlePollTimer=null;
+   document.getElementById('googleMessage').textContent='Authorization ended: '+d.status;
+   document.getElementById('googleConnectButton').disabled=false;
+  }else if(d.status==='error'){
+   document.getElementById('googleMessage').textContent='Google authorization check failed. Retrying...';
+  }
+ }catch(e){
+  document.getElementById('googleMessage').textContent=e.message;
+ }
+}
+
+async function loadGoogleConnection(){
+ try{
+  const r=await apiFetch('/api/google/connection');
+  if(!r.ok)return;
+  const d=await r.json();
+  document.getElementById('googleStatus').textContent=
+   d.connected?'Connected':'Not connected';
+ }catch(e){
+  document.getElementById('googleStatus').textContent='Connection status unavailable';
+ }
+}
+
 async function loadConfig(){
  try{
   const r=await apiFetch('/api/config');if(!r.ok)return;
   const c=await r.json();
-  for(const key of ['schedule','backup_time','retention','backup_directory'])
+  for(const key of ['schedule','backup_time','retention','google_drive_folder'])
    document.getElementById(key).value=c[key];
   document.getElementById('enabled').value=String(c.enabled);
  }catch(e){}
@@ -661,9 +847,7 @@ async function saveConfig(){
   schedule:document.getElementById('schedule').value,
   backup_time:document.getElementById('backup_time').value,
   retention:Number(document.getElementById('retention').value),
-  backup_directory:document.getElementById('backup_directory').value,
-  google_drive_enabled:false,
-  google_drive_folder:'eisy Backups'
+  google_drive_folder:document.getElementById('google_drive_folder').value.trim()||'eisy Backups'
  };
  try{
   const r=await apiFetch('/api/config',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(c)});
@@ -688,6 +872,10 @@ async function refreshStatus(){
  try{
   const r=await apiFetch('/api/status');const s=await r.json();
   const el=document.getElementById('status');
+  if(lastObservedBackupRunning && !s.running){
+   await refreshHistory();
+  }
+  lastObservedBackupRunning=s.running;
   el.textContent=s.status;
   el.className='status '+(s.error?'error':(s.running?'':'success'));
   document.getElementById('last').textContent=s.error?s.error:(s.last_backup?'Last backup: '+s.last_backup.filename:'');
