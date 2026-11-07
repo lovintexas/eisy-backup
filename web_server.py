@@ -57,9 +57,6 @@ recovery_attempts = {}
 recovery_lock = threading.Lock()
 
 DEFAULT_CONFIG = {
-    "enabled": False,
-    "schedule": "daily",
-    "backup_time": "02:00",
     "retention": 7,
     "google_drive_folder": "eisy Backups"
 }
@@ -120,7 +117,25 @@ def clear_rate_limit(table, key):
         table.pop(key, None)
 
 
+
+_backup_status_callback = None
+
+
+def register_backup_status_callback(callback):
+    global _backup_status_callback
+    _backup_status_callback = callback
+
+
+def update_iox_backup_status(value):
+    if _backup_status_callback is not None:
+        try:
+            _backup_status_callback(value)
+        except Exception:
+            LOGGER.exception("Failed to update IoX backup status")
+
+
 def backup_worker():
+    update_iox_backup_status(2)
     try:
         config = load_config()
 
@@ -143,9 +158,11 @@ def backup_worker():
             backup_state["last_backup"] = result
             backup_state["error"] = None
 
+        update_iox_backup_status(1)
         LOGGER.info("Backup completed: %s", result["filename"])
 
     except Exception as exc:
+        update_iox_backup_status(3)
         LOGGER.exception("Backup failed")
         with state_lock:
             backup_state["status"] = "Backup failed"
@@ -311,9 +328,6 @@ def recover_password(data: PasswordRecovery, request: Request, response: Respons
 
 
 class ConfigUpdate(BaseModel):
-    enabled: bool = False
-    schedule: str = Field(pattern="^(daily|weekly|manual)$")
-    backup_time: str = Field(pattern="^([01][0-9]|2[0-3]):[0-5][0-9]$")
     retention: int = Field(ge=1, le=365)
     google_drive_folder: str = "eisy Backups"
 
@@ -551,20 +565,6 @@ th{color:#687586}
 
 <div class="card">
 <h2>Backup settings</h2>
-<label>Automatic backups</label>
-<select id="enabled">
-<option value="false">Disabled</option>
-<option value="true">Enabled</option>
-</select>
-<div class="grid">
-<div><label>Schedule</label>
-<select id="schedule">
-<option value="daily">Daily</option>
-<option value="weekly">Weekly</option>
-<option value="manual">Manual only</option>
-</select></div>
-<div><label>Backup time</label><input id="backup_time" type="time"></div>
-</div>
 <div class="grid">
 <div><label>Google Drive backups to retain</label><input id="retention" type="number" min="1" max="365"></div>
 <div><label>Google Drive folder</label><input id="google_drive_folder" type="text" value="eisy Backups"></div>
@@ -850,17 +850,13 @@ async function loadConfig(){
  try{
   const r=await apiFetch('/api/config');if(!r.ok)return;
   const c=await r.json();
-  for(const key of ['schedule','backup_time','retention','google_drive_folder'])
+  for(const key of ['retention','google_drive_folder'])
    document.getElementById(key).value=c[key];
-  document.getElementById('enabled').value=String(c.enabled);
  }catch(e){}
 }
 
 async function saveConfig(){
  const c={
-  enabled:document.getElementById('enabled').value==='true',
-  schedule:document.getElementById('schedule').value,
-  backup_time:document.getElementById('backup_time').value,
   retention:Number(document.getElementById('retention').value),
   google_drive_folder:document.getElementById('google_drive_folder').value.trim()||'eisy Backups'
  };
