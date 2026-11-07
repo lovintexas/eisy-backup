@@ -33,6 +33,11 @@
         "sends": [],
         "accepts": [
           {
+            "id": "BACKUP",
+            "name": "Backup Now",
+            "native": "false"
+          },
+          {
             "id": "QUERY",
             "name": "Query",
             "native": "false"
