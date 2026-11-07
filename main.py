@@ -92,13 +92,6 @@ if __name__ == "__main__":
 
         isy = udi_interface.ISY(polyglot)
 
-        profile_path = BASE / "profile.json"
-        with profile_path.open(encoding="utf-8") as f:
-            polyglot.updateJsonProfile(
-                json.load(f),
-                {"waitResponse": True}
-            )
-
         polyglot.updateProfile()
 
         polyglot.ready()

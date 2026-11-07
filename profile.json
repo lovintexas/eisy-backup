@@ -63,9 +63,9 @@
             "id": "SET_RETENTION",
             "name": "Set Retention",
             "native": "false",
-            "params": [
+            "parameters": [
               {
-                "id": "GV1",
+                "id": "",
                 "name": "Backups to Retain",
                 "editor": "backup_retention"
               }

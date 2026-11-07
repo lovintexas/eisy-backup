@@ -3,3 +3,10 @@ ND-controller-NAME = eisy Backup
 ST-controller-ST-NAME = Backup Status
 CMD-controller-BACKUP-NAME = Backup Now
 CMD-controller-QUERY-NAME = Query
+
+BACKUPSTATUS-0 = Not Configured
+BACKUPSTATUS-1 = Ready
+BACKUPSTATUS-2 = Backing Up
+BACKUPSTATUS-3 = Error
+GV-controller-GV1-NAME = Google Drive Backups to Retain
+CMD-controller-SET_RETENTION-NAME = Set Retention

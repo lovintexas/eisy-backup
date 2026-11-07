@@ -3,12 +3,16 @@
   <nodeDef id="controller" nls="controller">
     <sts>
       <st id="ST" editor="BackupStatus"/>
+      <st id="GV1" editor="BackupRetention"/>
     </sts>
     <cmds>
       <sends/>
       <accepts>
         <cmd id="BACKUP"/>
         <cmd id="QUERY"/>
+        <cmd id="SET_RETENTION">
+          <p id="" editor="BackupRetention"/>
+        </cmd>
       </accepts>
     </cmds>
   </nodeDef>
