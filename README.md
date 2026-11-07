@@ -1,5 +1,8 @@
 # eisy Backup
 
+**[Configuration Guide — setup, Google Drive authorization, and required API access](https://lovintexas.github.io/eisy-backup/)**
+
+
 **Version 1.0.0**
 
 ## Overview

@@ -1,86 +1,46 @@
 <!DOCTYPE html>
-<html lang="en">
-<head>
-<meta charset="UTF-8">
-<meta name="viewport" content="width=device-width,initial-scale=1">
-<title>eisy Backup — Plugin Guide</title>
+<html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1">
+<title>eisy Backup | Configuration Guide</title>
 <style>
-:root{color-scheme:light}
-*{box-sizing:border-box}
-body{margin:0;background:#f3f6fa;color:#253247;font:15px/1.65 Arial,Helvetica,sans-serif}
-header{background:#173d69;color:white;padding:42px 22px}
-.container{max-width:920px;margin:auto}
-header h1{font-size:34px;margin:0}
-header p{opacity:.85;margin:6px 0 0}
-main{padding:25px 18px 45px}
-.card{background:white;border-radius:10px;padding:24px 28px;margin-bottom:18px;box-shadow:0 2px 9px #1a345010}
-h2{font-size:21px;color:#173d69;margin:0 0 12px}
-p{margin:8px 0 14px}
-li{margin:6px 0}
-ul{padding-left:24px}
-code{background:#eef2f7;border-radius:4px;padding:2px 5px;overflow-wrap:anywhere}
-footer{text-align:center;color:#687586;padding:0 20px 30px;font-size:13px}
-@media(max-width:600px){header{padding:28px 18px}.card{padding:20px}}
-</style>
-</head>
-<body>
-<header><div class="container">
-<h1>eisy Backup</h1>
-<p>Plugin Guide · Version 1.0.0</p>
-</div></header>
-<main class="container">
-<section class="card"><h2>Overview</h2><p>eisy Backup is a Universal Devices plugin for creating native eisy system backups and uploading them directly to your own Google Drive account.</p>
-<p>Version 1.0.0 provides on-demand backups, Google Drive authorization, backup history, configurable Google Drive folder, retention management, local backup downloads, and IoX status reporting.</p></section>
-<section class="card"><h2>Requirements</h2><ul>
-<li>Universal Devices eisy with a supported plugin environment.</li>
-<li>Internet access for Google Drive uploads and authorization.</li>
-<li>An existing Google account.</li>
-<li>Allow Unrestricted ISY Access enabled for the plugin.</li>
-</ul></section>
-<section class="card"><h2>Installation</h2><ul>
-<li>Install eisy Backup from the Universal Devices plugin store.</li>
-<li>Enable Allow Unrestricted ISY Access when required.</li>
-<li>Open the plugin&#x27;s HTTPS web interface at <code>https://EISY-IP:8768</code>, replacing <code>EISY-IP</code> with your eisy&#x27;s IP address.</li>
-<li>Create an administrator password on first access.</li>
-<li>Log in with username <code>admin</code> and your password.</li>
-</ul></section>
-<section class="card"><h2>Google Drive Setup</h2><ul>
-<li>Select <strong>Connect Google Drive</strong> in the web interface.</li>
-<li>Follow the displayed Google authorization link.</li>
-<li>Enter the displayed verification code and approve the requested access.</li>
-<li>Return to the web interface and verify that Google Drive is connected.</li>
-<li>Optionally change the Google Drive backup folder and save settings.</li>
-</ul>
-<p>The plugin requests the Google Drive <code>drive.file</code> scope, which limits access to files created or managed by the application rather than unrestricted access to your entire Drive.</p></section>
-<section class="card"><h2>Creating a Backup</h2><ul>
-<li>Open the plugin&#x27;s web interface.</li>
-<li>Click <strong>Backup Now</strong>.</li>
-<li>Wait for the backup operation to complete.</li>
-<li>Confirm the result in Backup History and the IoX Admin Console.</li>
-</ul>
-<p>Backups are initiated on demand in version 1.0.0. Automatic scheduling is not included in this release.</p></section>
-<section class="card"><h2>Backup History and Downloads</h2><p>The Backup History section displays previous backup attempts and their results.</p>
-<p>When a successful backup ZIP is still available locally, a <strong>Download</strong> button appears beside that entry. Click it to save the ZIP to your computer.</p>
-<p>The plugin retains only the newest local backup archive during normal operation. Older backups must be retrieved from Google Drive.</p></section>
-<section class="card"><h2>Restoring a Backup</h2><ul>
-<li>Obtain the required backup ZIP from the local Download button or Google Drive.</li>
-<li>Open the Universal Devices eisy-ui backup/restore interface.</li>
-<li>Use the existing restore function and select the downloaded ZIP.</li>
-<li>Follow the restore instructions presented by eisy-ui.</li>
-</ul>
-<p>The eisy Backup plugin creates and downloads backup archives; it does not directly execute system restores.</p></section>
-<section class="card"><h2>Security and Privacy</h2><ul>
-<li>The web interface uses HTTPS and administrator authentication.</li>
-<li>Google authorization uses OAuth; your Google password is not entered into the plugin.</li>
-<li>Backup files are uploaded directly from your eisy to your Google Drive account.</li>
-<li>Google authorization tokens are stored locally.</li>
-<li>Google access can be revoked through your Google Account settings.</li>
-<li>See <code>PRIVACY.md</code> for the full privacy policy.</li>
-</ul>
-<p>Protect downloaded backup ZIP files because they may contain sensitive system configuration.</p></section>
-<section class="card"><h2>Version History</h2><p><strong>1.0.0 — Initial release</strong></p>
-<p>Native eisy backups, Google Drive integration, backup history, retention, authenticated HTTPS web interface, local ZIP downloads, and IoX status monitoring.</p></section>
-</main>
-<footer>eisy Backup · Version 1.0.0</footer>
-</body>
-</html>
+:root{color-scheme:light;--navy:#15345c;--blue:#2463a6;--ink:#263447;--muted:#627184;--line:#e2e9f2}
+*{box-sizing:border-box}body{margin:0;background:#f4f7fb;color:var(--ink);font:16px/1.65 system-ui,-apple-system,Segoe UI,Arial,sans-serif}
+a{color:var(--blue)}header{background:linear-gradient(125deg,#14345b,#2869aa);color:#fff;padding:55px 20px 48px}
+.wrap{max-width:920px;margin:auto}header h1{font-size:clamp(2rem,5vw,3rem);margin:0}header p{font-size:1.1rem;opacity:.92;margin:8px 0 0}
+main{padding:28px 18px 55px}.card{background:#fff;border:1px solid var(--line);border-radius:13px;padding:25px 30px;margin-bottom:20px;box-shadow:0 3px 16px #15345c0b}
+.critical{border:2px solid #cc8527;background:#fff9ed}.critical h2{color:#8b510a}.critical strong{color:#784508}
+h2{color:var(--navy);margin:0 0 10px;font-size:1.35rem}h3{margin:18px 0 7px;font-size:1rem}p{margin:8px 0 13px}ol,ul{padding-left:24px}li{margin:8px 0}
+code{background:#eaf0f8;border-radius:5px;padding:3px 6px;overflow-wrap:anywhere} .step{display:inline-block;background:#e9f1fc;color:#174d87;border-radius:50%;width:30px;height:30px;text-align:center;line-height:30px;margin-right:8px;font-weight:700}
+.muted{color:var(--muted)}.pill{display:inline-block;background:#e6f2ff;color:#174b82;border-radius:50px;padding:4px 11px;font-weight:650;font-size:.8rem;margin-bottom:12px}
+footer{text-align:center;color:var(--muted);font-size:.85rem;padding:0 20px 30px}@media(max-width:600px){header{padding:35px 20px}.card{padding:21px}}
+</style></head><body>
+<header><div class="wrap"><span class="pill">VERSION 1.0.0</span><h1>eisy Backup</h1><p>Configuration and Google Drive setup guide</p></div></header>
+<main class="wrap">
+<section class="card critical"><h2>Important: Enable Unrestricted ISY Access</h2>
+<p><strong>Before creating your first backup, enable “Allow Unrestricted ISY Access” for the eisy Backup plugin in PG3x.</strong> The plugin requires this permission to request native system backups from IoX.</p>
+<ol><li>Open the PG3x plugin dashboard on your eisy.</li><li>Select <strong>eisy Backup</strong> and open its configuration/settings.</li><li>Enable <strong>Allow Unrestricted ISY Access</strong>.</li><li>Save the setting and restart the plugin if prompted.</li></ol>
+<p><strong>If this setting is disabled, backup creation may fail even when the web interface and Google Drive connection appear to work.</strong></p></section>
+<section class="card"><h2><span class="step">1</span> Open the secure configuration page</h2>
+<p>In a browser on your local network, visit <code>https://EISY-IP:8768</code>, replacing <code>EISY-IP</code> with the IP address of your eisy.</p>
+<p class="muted">The configuration interface uses HTTPS. If your browser warns about a locally issued certificate, verify that you are connecting to your own eisy before proceeding.</p></section>
+<section class="card"><h2><span class="step">2</span> Create your administrator password</h2>
+<ol><li>On first access, enter and confirm a new administrator password.</li><li>Use username <code>admin</code> and that password for future logins.</li><li>Keep the password secure. The interface also provides password change and recovery options.</li></ol></section>
+<section class="card"><h2><span class="step">3</span> Connect Google Drive</h2>
+<ol><li>In the <strong>Google Drive</strong> section, select <strong>Connect Google Drive</strong>.</li><li>Open the Google authorization link shown on the page.</li><li>Enter the displayed device verification code.</li><li>Sign in to the Google account where you want backups stored and approve the requested permissions.</li><li>Return to the plugin page and confirm that Google Drive reports connected.</li></ol>
+<p>The plugin requests the limited Google Drive <code>drive.file</code> permission, rather than unrestricted access to your entire Drive. Your Google account password is entered only on Google's authorization page.</p></section>
+<section class="card"><h2><span class="step">4</span> Set the backup folder</h2>
+<ol><li>Under <strong>Backup settings</strong>, enter your preferred <strong>Google Drive folder</strong> name.</li><li>Select <strong>Save settings</strong>.</li></ol>
+<p>The default folder name is <code>eisy Backups</code>.</p></section>
+<section class="card"><h2><span class="step">5</span> Create and verify a backup</h2>
+<ol><li>Click <strong>Backup Now</strong>.</li><li>Wait for the operation to finish.</li><li>Check <strong>Backup history</strong> for the result.</li><li>Confirm the archive is present in your Google Drive folder.</li><li>Optionally check the last backup status in the IoX Admin Console.</li></ol>
+<p>Version 1.0.0 provides <strong>on-demand</strong> backups; it does not include automatic scheduling.</p></section>
+<section class="card"><h2>Downloading and restoring a backup</h2>
+<p>For a successful backup ZIP still available on the eisy, select <strong>Download</strong> in Backup history. The plugin normally retains only the newest local ZIP; retrieve older archives from Google Drive.</p>
+<p>To restore, download the desired ZIP and use the existing eisy-ui restore functionality. The plugin does not itself perform restores.</p></section>
+<section class="card"><h2>Troubleshooting</h2>
+<h3>Backup creation fails</h3><p>First verify <strong>Allow Unrestricted ISY Access</strong> is enabled for eisy Backup in PG3x. Then review the plugin status and logs.</p>
+<h3>Google Drive is not connected</h3><p>Return to the Google Drive section, reconnect, and complete the device authorization process. Verify internet connectivity.</p>
+<h3>No Download button for an older backup</h3><p>The Download button appears only for successful archives still available locally. Retrieve older backups directly from Google Drive.</p>
+<h3>Cannot open the web interface</h3><p>Check that the plugin is running, use <code>https://</code> (not <code>http://</code>), and verify the eisy IP address and port <code>8768</code>.</p></section>
+<section class="card"><h2>Security and privacy</h2><p>Backups may contain sensitive system configuration. Protect any downloaded ZIP files. Google authorization tokens are stored locally, and uploads go directly to your authorized Google Drive account.</p>
+<p>Read the <a href="https://github.com/lovintexas/eisy-backup/blob/main/PRIVACY.md">Privacy Policy</a> or visit the <a href="https://github.com/lovintexas/eisy-backup">GitHub repository</a>.</p></section>
+</main><footer>eisy Backup 1.0.0 · Configuration Guide</footer></body></html>
