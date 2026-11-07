@@ -18,7 +18,7 @@ LOGGER = logging.getLogger("eisy-backup")
 EISY_UI_HOST = "127.0.0.1"
 EISY_UI_PORT = 443
 BACKUP_LOCK = threading.Lock()
-DEFAULT_BACKUP_DIRECTORY = "/var/tmp/eisy-backup-{}".format(os.getuid())
+DEFAULT_BACKUP_DIRECTORY = str(Path(__file__).resolve().parent / "persist" / "backups")
 
 
 def grant_eisyui_backup_access():
