@@ -16,6 +16,7 @@ from zoneinfo import ZoneInfo
 LOGGER = logging.getLogger("eisy-backup")
 SOCKET_PATH = "/tmp/eisyui-listener"
 BACKUP_LOCK = threading.Lock()
+DEFAULT_BACKUP_DIRECTORY = str(Path(__file__).resolve().parent / "persist" / "backups")
 
 
 class UnixHTTPConnection(http.client.HTTPConnection):
@@ -58,7 +59,7 @@ def save_history(history, directory):
     temp.replace(path)
 
 
-def create_backup(directory="/var/eisy-backups", retention=7):
+def create_backup(directory=DEFAULT_BACKUP_DIRECTORY, retention=7):
     if not BACKUP_LOCK.acquire(blocking=False):
         raise RuntimeError("A backup is already running")
 
@@ -211,7 +212,7 @@ def create_backup(directory="/var/eisy-backups", retention=7):
         BACKUP_LOCK.release()
 
 
-def get_history(directory="/var/eisy-backups"):
+def get_history(directory=DEFAULT_BACKUP_DIRECTORY):
     history_file = Path(directory) / "history.json"
 
     if not history_file.exists():

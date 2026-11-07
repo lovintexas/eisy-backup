@@ -26,7 +26,7 @@ LOGGER = logging.getLogger("eisy-backup-web")
 
 app = FastAPI(title="eisy Backup")
 
-BACKUP_DIRECTORY = "/var/eisy-backups"
+BACKUP_DIRECTORY = str(PERSIST / "backups")
 COOKIE_NAME = "eisy_backup_session"
 COOKIE_MAX_AGE = 3600
 
