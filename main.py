@@ -2,6 +2,7 @@
 
 import atexit
 import json
+import os
 import signal
 import threading
 import time
@@ -72,7 +73,15 @@ def stop_web_server():
 
 
 def handle_sigterm(signum, frame):
-    raise SystemExit(0)
+    LOGGER.info("eisy Backup: SIGTERM received, shutting down")
+    try:
+        stop_web_server()
+        if polyglot is not None:
+            polyglot.stop()
+    except Exception:
+        LOGGER.exception("Error during shutdown")
+    finally:
+        os._exit(0)
 
 
 signal.signal(signal.SIGTERM, handle_sigterm)
