@@ -6,7 +6,8 @@ LOGGER = udi_interface.LOGGER
 class Controller(udi_interface.Node):
     id = 'controller'
     drivers = [
-        {'driver': 'ST', 'value': 0, 'uom': 25, 'name': 'Backup Status'}
+        {'driver': 'ST', 'value': 0, 'uom': 25, 'name': 'Backup Status'},
+        {'driver': 'GV1', 'value': 7, 'uom': 56, 'name': 'Google Drive Backups to Retain'}
     ]
 
     def __init__(self, polyglot):
@@ -32,6 +33,7 @@ class Controller(udi_interface.Node):
             status = 3
 
         self.setDriver('ST', status)
+        self.setDriver('GV1', web_server.load_config()['retention'])
 
     def update_backup_status(self, value):
         self.setDriver('ST', value)
@@ -48,7 +50,22 @@ class Controller(udi_interface.Node):
         except RuntimeError as exc:
             LOGGER.warning("IoX backup request rejected: %s", exc)
 
+    def set_retention(self, command):
+        import web_server
+
+        value = int(command['value'])
+        if not 1 <= value <= 365:
+            LOGGER.warning("Invalid retention value: %s", value)
+            return
+
+        config = web_server.load_config()
+        config['retention'] = value
+        web_server.save_config(config)
+        self.setDriver('GV1', value)
+        LOGGER.info("Google Drive retention set to %s backups", value)
+
     commands = {
         'QUERY': query,
-        'BACKUP': backup_now
+        'BACKUP': backup_now,
+        'SET_RETENTION': set_retention
     }

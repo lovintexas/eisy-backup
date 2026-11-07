@@ -328,7 +328,6 @@ def recover_password(data: PasswordRecovery, request: Request, response: Respons
 
 
 class ConfigUpdate(BaseModel):
-    retention: int = Field(ge=1, le=365)
     google_drive_folder: str = "eisy Backups"
 
 
@@ -339,7 +338,8 @@ def get_config(auth=Depends(authenticated)):
 
 @app.post("/api/config")
 def update_config(data: ConfigUpdate, auth=Depends(authenticated)):
-    config = data.model_dump()
+    config = load_config()
+    config.update(data.model_dump())
     save_config(config)
     return {"success": True, "config": config}
 
@@ -566,7 +566,7 @@ th{color:#687586}
 <div class="card">
 <h2>Backup settings</h2>
 <div class="grid">
-<div><label>Google Drive backups to retain</label><input id="retention" type="number" min="1" max="365"></div>
+
 <div><label>Google Drive folder</label><input id="google_drive_folder" type="text" value="eisy Backups"></div>
 </div>
 <button onclick="saveConfig()">Save settings</button>
@@ -850,14 +850,13 @@ async function loadConfig(){
  try{
   const r=await apiFetch('/api/config');if(!r.ok)return;
   const c=await r.json();
-  for(const key of ['retention','google_drive_folder'])
+  for(const key of ['google_drive_folder'])
    document.getElementById(key).value=c[key];
  }catch(e){}
 }
 
 async function saveConfig(){
  const c={
-  retention:Number(document.getElementById('retention').value),
   google_drive_folder:document.getElementById('google_drive_folder').value.trim()||'eisy Backups'
  };
  try{
