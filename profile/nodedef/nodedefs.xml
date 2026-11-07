@@ -1,0 +1,14 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<nodeDefs>
+  <nodeDef id="controller" nls="controller">
+    <sts>
+      <st id="ST" editor="BackupStatus"/>
+    </sts>
+    <cmds>
+      <accepts>
+        <cmd id="BACKUP"/>
+        <cmd id="QUERY"/>
+      </accepts>
+    </cmds>
+  </nodeDef>
+</nodeDefs>

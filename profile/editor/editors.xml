@@ -1,0 +1,6 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<editors>
+  <editor id="BackupStatus">
+    <range uom="25" min="0" max="3" step="1" prec="0"/>
+  </editor>
+</editors>

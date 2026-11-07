@@ -330,19 +330,34 @@ def update_config(data: ConfigUpdate, auth=Depends(authenticated)):
     return {"success": True, "config": config}
 
 
-@app.post("/api/backup")
-def start_backup(auth=Depends(authenticated)):
+def start_backup_job():
+    """Start a backup from either IoX or the web interface."""
     if not (google_drive.load_tokens(GOOGLE_AUTH_DIRECTORY) or {}).get("refresh_token"):
-        raise HTTPException(409, "Connect Google Drive before backing up")
+        raise RuntimeError("Connect Google Drive before backing up")
+
     with state_lock:
         if backup_state["running"]:
-            raise HTTPException(409, "Backup already running")
-
+            raise RuntimeError("Backup already running")
         backup_state["running"] = True
         backup_state["status"] = "Starting backup"
         backup_state["error"] = None
 
-    threading.Thread(target=backup_worker, daemon=True).start()
+    try:
+        threading.Thread(target=backup_worker, daemon=True).start()
+    except Exception:
+        with state_lock:
+            backup_state["running"] = False
+        raise
+
+
+@app.post("/api/backup")
+def start_backup(auth=Depends(authenticated)):
+    if not (google_drive.load_tokens(GOOGLE_AUTH_DIRECTORY) or {}).get("refresh_token"):
+        raise HTTPException(409, "Connect Google Drive before backing up")
+    try:
+        start_backup_job()
+    except RuntimeError as exc:
+        raise HTTPException(409, str(exc))
     return {"success": True, "message": "Backup started"}
 
 

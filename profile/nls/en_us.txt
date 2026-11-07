@@ -1,1 +1,5 @@
 ND-controller-ICON = GenericCtl
+ND-controller-NAME = eisy Backup
+ST-controller-ST-NAME = Backup Status
+CMD-controller-BACKUP-NAME = Backup Now
+CMD-controller-QUERY-NAME = Query

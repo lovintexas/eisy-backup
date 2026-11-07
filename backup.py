@@ -22,6 +22,16 @@ class Controller(udi_interface.Node):
     def query(self, command=None):
         self.reportDrivers()
 
+    def backup_now(self, command=None):
+        import web_server
+
+        try:
+            web_server.start_backup_job()
+            LOGGER.info("Backup requested from IoX")
+        except RuntimeError as exc:
+            LOGGER.warning("IoX backup request rejected: %s", exc)
+
     commands = {
-        'QUERY': query
+        'QUERY': query,
+        'BACKUP': backup_now
     }
