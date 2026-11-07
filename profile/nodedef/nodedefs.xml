@@ -5,6 +5,7 @@
       <st id="ST" editor="BackupStatus"/>
     </sts>
     <cmds>
+      <sends/>
       <accepts>
         <cmd id="BACKUP"/>
         <cmd id="QUERY"/>
