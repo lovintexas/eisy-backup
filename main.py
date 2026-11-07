@@ -101,8 +101,8 @@ if __name__ == "__main__":
 
         polyglot.updateProfile()
 
-        Controller(polyglot)
         polyglot.ready()
+        Controller(polyglot)
 
         LOGGER.info("eisy Backup plugin initialized")
 

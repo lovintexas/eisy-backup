@@ -10,7 +10,7 @@ class Controller(udi_interface.Node):
     ]
 
     def __init__(self, polyglot):
-        super().__init__(polyglot, 'ctl', 'ctl', 'eisy Backup')
+        super().__init__(polyglot, 'controller', 'controller', 'eisy Backup')
         self.poly = polyglot
         self.poly.subscribe(self.poly.START, self.start, self.address)
         self.poly.addNode(self)
