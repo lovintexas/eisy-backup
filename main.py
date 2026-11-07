@@ -76,10 +76,6 @@ def handle_sigterm(signum, frame):
     LOGGER.info("eisy Backup: SIGTERM received, shutting down")
     try:
         stop_web_server()
-        if polyglot is not None:
-            polyglot.stop()
-    except Exception:
-        LOGGER.exception("Error during shutdown")
     finally:
         os._exit(0)
 
