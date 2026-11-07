@@ -6,4 +6,10 @@
   <editor id="BackupRetention">
     <range uom="56" min="1" max="30" prec="0" />
   </editor>
+  <editor id="BackupTimestamp">
+    <range uom="151" min="0" max="9999999999" prec="0" />
+  </editor>
+  <editor id="BackupResult">
+    <range uom="25" subset="0,1,2" nls="BACKUPRESULT" />
+  </editor>
 </editors>

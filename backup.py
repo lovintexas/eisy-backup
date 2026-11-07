@@ -7,7 +7,9 @@ class Controller(udi_interface.Node):
     id = 'controller'
     drivers = [
         {'driver': 'ST', 'value': 0, 'uom': 25, 'name': 'Backup Status'},
-        {'driver': 'GV1', 'value': 7, 'uom': 56, 'name': 'Google Drive Backups to Retain'}
+        {'driver': 'GV1', 'value': 7, 'uom': 56, 'name': 'Google Drive Backups to Retain'},
+        {'driver': 'GV2', 'value': 0, 'uom': 151, 'name': 'Last Backup'},
+        {'driver': 'GV3', 'value': 0, 'uom': 25, 'name': 'Last Backup Result'}
     ]
 
     def __init__(self, polyglot):
@@ -34,9 +36,40 @@ class Controller(udi_interface.Node):
 
         self.setDriver('ST', status)
         self.setDriver('GV1', web_server.load_config()['retention'])
+        self.update_backup_history()
+
+    def update_backup_history(self):
+        from datetime import datetime
+        from backup_engine import get_history
+
+        history = get_history()
+        completed = next(
+            (item for item in history
+             if item.get('completed') and
+             item.get('status') in ('successful', 'failed')),
+            None
+        )
+
+        if completed is None:
+            self.setDriver('GV2', 0)
+            self.setDriver('GV3', 0)
+            return
+
+        try:
+            timestamp = int(datetime.fromisoformat(
+                completed['completed'].replace('Z', '+00:00')
+            ).timestamp())
+            self.setDriver('GV2', timestamp)
+            self.setDriver(
+                'GV3', 1 if completed['status'] == 'successful' else 2
+            )
+        except (ValueError, TypeError, OverflowError):
+            LOGGER.exception("Invalid backup completion timestamp")
 
     def update_backup_status(self, value):
         self.setDriver('ST', value)
+        if value in (1, 3):
+            self.update_backup_history()
 
     def query(self, command=None):
         self.reportDrivers()
@@ -54,7 +87,7 @@ class Controller(udi_interface.Node):
         import web_server
 
         value = int(command['value'])
-        if not 1 <= value <= 365:
+        if not 1 <= value <= 30:
             LOGGER.warning("Invalid retention value: %s", value)
             return
 

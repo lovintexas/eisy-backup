@@ -135,6 +135,13 @@ def update_iox_backup_status(value):
 
 
 def backup_worker():
+    from backup_engine import save_history, DEFAULT_BACKUP_DIRECTORY
+
+    previous_history = get_history()
+    previous_start = (
+        previous_history[0].get("started") if previous_history else None
+    )
+
     update_iox_backup_status(2)
     try:
         config = load_config()
@@ -162,8 +169,33 @@ def backup_worker():
         LOGGER.info("Backup completed: %s", result["filename"])
 
     except Exception as exc:
-        update_iox_backup_status(3)
         LOGGER.exception("Backup failed")
+
+        # The engine normally records failures itself. Record failures
+        # that occur before the engine starts writing history.
+        try:
+            history = get_history()
+            latest_start = history[0].get("started") if history else None
+            if latest_start == previous_start:
+                now = datetime.now().astimezone()
+                record = {
+                    "filename": None,
+                    "date": now.isoformat(),
+                    "started": now.isoformat(),
+                    "completed": now.isoformat(),
+                    "size": 0,
+                    "path": None,
+                    "status": "failed",
+                    "successful": False,
+                    "error": str(exc),
+                    "google_drive": "Not uploaded"
+                }
+                history.insert(0, record)
+                save_history(history[:100], DEFAULT_BACKUP_DIRECTORY)
+        except Exception:
+            LOGGER.exception("Unable to record early backup failure")
+
+        update_iox_backup_status(3)
         with state_lock:
             backup_state["status"] = "Backup failed"
             backup_state["error"] = str(exc)
