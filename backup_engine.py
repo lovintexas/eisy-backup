@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 
 import http.client
-import socket
+import ssl
 import json
 import zipfile
 import logging
@@ -14,40 +14,76 @@ from datetime import datetime
 from zoneinfo import ZoneInfo
 
 LOGGER = logging.getLogger("eisy-backup")
-SOCKET_PATH = "/tmp/eisyui-listener"
+EISY_UI_HOST = "127.0.0.1"
+EISY_UI_PORT = 443
 BACKUP_LOCK = threading.Lock()
 DEFAULT_BACKUP_DIRECTORY = str(Path(__file__).resolve().parent / "persist" / "backups")
 
 
-class UnixHTTPConnection(http.client.HTTPConnection):
-    def connect(self):
-        self.sock = socket.socket(socket.AF_UNIX, socket.SOCK_STREAM)
-        self.sock.settimeout(300)
-        self.sock.connect(SOCKET_PATH)
+def grant_eisyui_backup_access():
+    """Allow eisy-ui to read persistent plugin files during native backup."""
+    root = Path(__file__).resolve().parent / "persist"
+
+    if not root.exists():
+        return
+
+    paths = [root, *root.rglob("*")]
+
+    for path in paths:
+        if path.is_symlink():
+            continue
+
+        permission = "rx" if path.is_dir() else "r"
+
+        subprocess.run(
+            ["setfacl", "-m", f"u:eisyui:{permission}:allow", str(path)],
+            check=True,
+        )
 
 
-def api_request(path, stream=False):
-    conn = UnixHTTPConnection("localhost", timeout=300)
-    conn.request("GET", path)
-    response = conn.getresponse()
+def api_request(path, token, stream=False):
+    if not token:
+        raise RuntimeError("eisy-ui authentication token unavailable")
 
-    if response.status != 200:
-        detail = response.read(2000).decode(errors="replace")
-        conn.close()
-        raise RuntimeError(f"eisy-ui API error {response.status}: {detail}")
-
-    if stream:
-        return conn, response
+    context = ssl._create_unverified_context()
+    conn = http.client.HTTPSConnection(
+        EISY_UI_HOST,
+        EISY_UI_PORT,
+        timeout=300,
+        context=context
+    )
 
     try:
-        result = json.loads(response.read())
-    finally:
+        conn.request(
+            "GET",
+            path,
+            headers={"Authorization": f"Bearer {token}"}
+        )
+        response = conn.getresponse()
+
+        if response.status != 200:
+            detail = response.read(2000).decode(errors="replace")
+            conn.close()
+            raise RuntimeError(
+                f"eisy-ui API error {response.status}: {detail}"
+            )
+
+        if stream:
+            return conn, response
+
+        try:
+            result = json.loads(response.read())
+        finally:
+            conn.close()
+
+        if not result.get("successful"):
+            raise RuntimeError(f"eisy-ui returned failure: {result}")
+
+        return result["data"]
+
+    except Exception:
         conn.close()
-
-    if not result.get("successful"):
-        raise RuntimeError(f"eisy-ui returned failure: {result}")
-
-    return result["data"]
+        raise
 
 
 def save_history(history, directory):
@@ -59,7 +95,7 @@ def save_history(history, directory):
     temp.replace(path)
 
 
-def create_backup(directory=DEFAULT_BACKUP_DIRECTORY, retention=7):
+def create_backup(directory=DEFAULT_BACKUP_DIRECTORY, retention=7, token=None):
     if not BACKUP_LOCK.acquire(blocking=False):
         raise RuntimeError("A backup is already running")
 
@@ -102,9 +138,12 @@ def create_backup(directory=DEFAULT_BACKUP_DIRECTORY, retention=7):
         history.insert(0, record.copy())
         save_history(history, destination)
 
+        LOGGER.info("Granting eisy-ui access to persistent plugin files")
+        grant_eisyui_backup_access()
+
         LOGGER.info("Requesting native eisy backup")
 
-        result = api_request("/api/system/backup/create")
+        result = api_request("/api/system/backup/create", token)
         meta = result["meta"]
         download_path = result["downloadPath"]
 
@@ -113,7 +152,7 @@ def create_backup(directory=DEFAULT_BACKUP_DIRECTORY, retention=7):
 
         LOGGER.info("Downloading native backup: %s", filename)
 
-        conn, response = api_request(download_path, stream=True)
+        conn, response = api_request(download_path, token, stream=True)
 
         try:
             if response.status != 200:

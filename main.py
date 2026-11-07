@@ -18,14 +18,15 @@ web_server = None
 web_thread = None
 
 
-def start_web_server():
+def start_web_server(plugin_token=None):
     global web_server, web_thread
 
     if web_thread is not None and web_thread.is_alive():
         return
 
     import uvicorn
-    from web_server import app
+    from web_server import app, set_eisy_ui_token
+    set_eisy_ui_token(plugin_token)
 
     certificates = list(BASE.glob("plugin_*.cert"))
     if len(certificates) != 1:
@@ -108,6 +109,7 @@ if __name__ == "__main__":
         for _ in range(30):
             if isy.valid:
                 LOGGER.info("eisy Backup: IoX credentials received")
+
                 break
 
             if isy.unauthorized:
@@ -120,7 +122,7 @@ if __name__ == "__main__":
                 "eisy Backup: timed out waiting for IoX credentials"
             )
 
-        start_web_server()
+        start_web_server(isy._isy_pass if isy.valid else None)
 
         polyglot.runForever()
 

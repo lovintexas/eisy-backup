@@ -26,6 +26,15 @@ LOGGER = logging.getLogger("eisy-backup-web")
 
 app = FastAPI(title="eisy Backup")
 
+EISY_UI_TOKEN = None
+
+
+def set_eisy_ui_token(token):
+    global EISY_UI_TOKEN
+    EISY_UI_TOKEN = token
+
+
+
 BACKUP_DIRECTORY = str(PERSIST / "backups")
 COOKIE_NAME = "eisy_backup_session"
 COOKIE_MAX_AGE = 3600
@@ -117,9 +126,13 @@ def backup_worker():
             backup_state["status"] = "Creating native eisy backup"
             backup_state["error"] = None
 
+        if not EISY_UI_TOKEN:
+            raise RuntimeError("eisy-ui authentication token unavailable")
+
         result = create_backup(
             directory=config["backup_directory"],
-            retention=config["retention"]
+            retention=config["retention"],
+            token=EISY_UI_TOKEN
         )
 
         with state_lock:
