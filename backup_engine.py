@@ -134,6 +134,13 @@ def create_backup(directory=DEFAULT_BACKUP_DIRECTORY, retention=7, token=None,
         history.insert(0, record.copy())
         save_history(history, destination)
         grant_eisyui_backup_access()
+
+        # Remove previous local backups before creating the native backup.
+        # Otherwise they become embedded in the new backup ZIP.
+        for old_backup in destination.glob("eisy-backup-*.zip"):
+            LOGGER.info("Removing previous local backup: %s", old_backup.name)
+            old_backup.unlink()
+
         result = api_request("/api/system/backup/create", token)
         metadata = result["meta"]
         conn, response = api_request(result["downloadPath"], token, stream=True)
@@ -185,7 +192,7 @@ def create_backup(directory=DEFAULT_BACKUP_DIRECTORY, retention=7, token=None,
     finally:
         if conn:
             conn.close()
-        for item in (partial, archive_path):
+        for item in (partial,):
             try:
                 item.unlink(missing_ok=True)
             except Exception:
