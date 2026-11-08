@@ -115,6 +115,36 @@ Regeneration immediately invalidates the previous token.
 Keep the token and downloaded backups secure.
 Configure the NAS to trust the plugin's HTTPS certificate.
 
+## Multiple eisy Systems Using One Google Drive Account
+
+Multiple eisy systems can back up to the same Google Drive account.
+
+Each eisy should use a different Google Drive folder to keep its
+backups separate.
+
+### Example configuration
+
+| System | Google Drive folder |
+|---|---|
+| Home eisy | `eisy Backups - Home` |
+| Office eisy | `eisy Backups - Office` |
+
+### Setup
+
+1. Install eisy Backup on each system.
+2. Authorize each installation with the same Google account.
+3. Open the plugin's HTTPS configuration interface on each eisy.
+4. Enable Google Drive backups.
+5. Enter a unique name in the **Google Drive folder** field.
+6. Save the configuration.
+7. Create a test backup and verify its destination in Google Drive.
+
+The default folder name is `eisy Backups`.
+
+Each installation independently manages its backup history and
+retention settings. Use separate folders to avoid one installation
+affecting another system's cloud backups.
+
 ## Version History
 
 **1.1.0 — NAS REST backup downloads**
