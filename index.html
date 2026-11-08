@@ -13,7 +13,7 @@ code{background:#eaf0f8;border-radius:5px;padding:3px 6px;overflow-wrap:anywhere
 .muted{color:var(--muted)}.pill{display:inline-block;background:#e6f2ff;color:#174b82;border-radius:50px;padding:4px 11px;font-weight:650;font-size:.8rem;margin-bottom:12px}
 footer{text-align:center;color:var(--muted);font-size:.85rem;padding:0 20px 30px}@media(max-width:600px){header{padding:35px 20px}.card{padding:21px}}
 </style></head><body>
-<header><div class="wrap"><span class="pill">VERSION 1.0.0</span><h1>eisy Backup</h1><p>Configuration and Google Drive setup guide</p></div></header>
+<header><div class="wrap"><span class="pill">VERSION 1.1.0</span><h1>eisy Backup</h1><p>Configuration, Google Drive, and NAS backup guide</p></div></header>
 <main class="wrap">
 <section class="card critical"><h2>Important: Enable Unrestricted ISY Access</h2>
 <p><strong>Before creating your first backup, enable “Allow Unrestricted ISY Access” for the eisy Backup plugin in PG3x.</strong> The plugin requires this permission to request native system backups from IoX.</p>
@@ -43,4 +43,27 @@ footer{text-align:center;color:var(--muted);font-size:.85rem;padding:0 20px 30px
 <h3>Cannot open the web interface</h3><p>Check that the plugin is running, use <code>https://</code> (not <code>http://</code>), and verify the eisy IP address and port <code>8768</code>.</p></section>
 <section class="card"><h2>Security and privacy</h2><p>Backups may contain sensitive system configuration. Protect any downloaded ZIP files. Google authorization tokens are stored locally, and uploads go directly to your authorized Google Drive account.</p>
 <p>Read the <a href="https://github.com/lovintexas/eisy-backup/blob/main/PRIVACY.md">Privacy Policy</a> or visit the <a href="https://github.com/lovintexas/eisy-backup">GitHub repository</a>.</p></section>
-</main><footer>eisy Backup 1.0.0 · Configuration Guide</footer></body></html>
+
+<section class="card">
+<h2>NAS Backup Access</h2>
+<p>Version 1.1.0 supports automated downloads of the latest
+successful local backup to a NAS or another computer.</p>
+<ol>
+<li>Open the backup plugin's HTTPS interface on port 8768.</li>
+<li>Sign in as administrator.</li>
+<li>Under <strong>NAS Backup Access</strong>, click
+<strong>Copy Token</strong>.</li>
+<li>Configure your NAS to download from:
+<code>https://EISY-IP:8768/api/backup/latest</code></li>
+<li>Include the HTTP header:
+<code>Authorization: Bearer YOUR_TOKEN</code></li>
+</ol>
+<p>The endpoint downloads an existing backup. It does not
+create a new backup.</p>
+<p>Use <strong>Regenerate Token</strong> to revoke the existing
+token and create a replacement. Update your NAS afterward.</p>
+<p>Protect your API token and downloaded archives. Configure
+your NAS to trust the plugin's HTTPS certificate.</p>
+</section>
+
+</main><footer>eisy Backup 1.1.0 · Configuration and NAS Guide</footer></body></html>
