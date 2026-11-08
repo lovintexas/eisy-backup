@@ -96,6 +96,35 @@ def authenticated(request: Request):
         raise HTTPException(401, "Login required")
 
 
+
+NAS_TOKEN_FILE = PERSIST / "nas_api_token"
+
+
+def get_nas_token():
+    """Read the preconfigured NAS download token."""
+    if NAS_TOKEN_FILE.is_symlink() or not NAS_TOKEN_FILE.is_file():
+        raise HTTPException(503, "NAS API token not configured")
+
+    token = NAS_TOKEN_FILE.read_text().strip()
+    if not token:
+        raise HTTPException(503, "NAS API token not configured")
+
+    return token
+
+
+def authenticated_nas(request: Request):
+    authorization = request.headers.get("Authorization", "")
+    scheme, separator, supplied = authorization.partition(" ")
+
+    if not separator or scheme.lower() != "bearer":
+        raise HTTPException(401, "Bearer token required")
+
+    expected = get_nas_token()
+
+    if not secrets.compare_digest(supplied.strip(), expected):
+        raise HTTPException(401, "Invalid API token")
+
+
 def client_key(request):
     return request.client.host if request.client else "unknown"
 
@@ -499,6 +528,85 @@ def google_status(auth=Depends(authenticated)):
             return {"status": "error"}
 
 
+
+
+@app.get("/api/nas/token")
+def nas_token_info(auth=Depends(authenticated)):
+    token = get_nas_token()
+    return Response(
+        content=__import__("json").dumps({"token": token}),
+        media_type="application/json",
+        headers={"Cache-Control": "no-store"}
+    )
+
+
+
+@app.post("/api/nas/token/regenerate")
+def regenerate_nas_token(auth=Depends(authenticated)):
+    import os
+
+    token = secrets.token_hex(32)
+    temporary = NAS_TOKEN_FILE.with_name("nas_api_token.tmp")
+
+    if NAS_TOKEN_FILE.is_symlink() or temporary.is_symlink():
+        raise HTTPException(500, "Unsafe NAS token path")
+
+    fd = os.open(
+        str(temporary),
+        os.O_WRONLY | os.O_CREAT | os.O_EXCL,
+        0o600
+    )
+
+    try:
+        with os.fdopen(fd, "w") as f:
+            f.write(token + "\n")
+        temporary.replace(NAS_TOKEN_FILE)
+    finally:
+        temporary.unlink(missing_ok=True)
+
+    return Response(
+        content=__import__("json").dumps({"token": token}),
+        media_type="application/json",
+        headers={"Cache-Control": "no-store"}
+    )
+
+
+@app.get("/api/backup/latest")
+def download_latest_backup(auth=Depends(authenticated_nas)):
+    import re
+
+    directory = Path(BACKUP_DIRECTORY).resolve()
+    candidates = []
+
+    for item in get_history():
+        filename = item.get("filename")
+        if (
+            item.get("status") != "successful"
+            or not isinstance(filename, str)
+            or not re.fullmatch(
+                r"eisy-backup-\d{4}-\d{2}-\d{2}-\d{6}\.zip",
+                filename
+            )
+        ):
+            continue
+
+        path = directory / filename
+        if path.is_file() and not path.is_symlink():
+            candidates.append((filename, path))
+
+    if not candidates:
+        raise HTTPException(404, "No successful local backup available")
+
+    filename, path = max(candidates, key=lambda item: item[0])
+
+    return FileResponse(
+        path,
+        media_type="application/zip",
+        filename=filename,
+        headers={"Cache-Control": "no-store"}
+    )
+
+
 @app.get("/api/backup/download/{filename}")
 def download_backup(filename: str, auth=Depends(authenticated)):
     import re
@@ -656,6 +764,27 @@ th{color:#687586}
 </div>
 
 <div class="card">
+<h2>NAS Backup Access</h2>
+<p class="note">Allow a NAS or another computer to download the latest successful backup automatically.</p>
+
+<label>Download URL</label>
+<input id="nasUrl" type="text" readonly>
+
+<label>API token</label>
+<input id="nasToken" type="password" readonly
+       placeholder="Click Show Token to display">
+
+<div>
+<button type="button" onclick="showNasToken()">Show Token</button>
+<button type="button" onclick="copyNasToken()">Copy Token</button>
+<button type="button" onclick="regenerateNasToken()">Regenerate Token</button>
+</div>
+
+<p id="nasMessage" class="note"></p>
+<p class="note">Regenerating the token immediately invalidates the previous token. Update your NAS configuration afterward.</p>
+</div>
+
+<div class="card">
 <h2>Backup history</h2>
 <div id="history">Loading...</div>
 </div>
@@ -704,6 +833,7 @@ const IDLE_LIMIT=3600000;
 });
 
 function showAuth(title,description){
+ clearNasToken();
  authenticatedSession=false;
  if(backupPollTimer){clearInterval(backupPollTimer);backupPollTimer=null;}
  document.getElementById('authScreen').classList.remove('hidden');
@@ -1030,7 +1160,58 @@ document.getElementById('history').addEventListener('click',function(event){
  if(button)downloadBackup(button.dataset.filename);
 });
 
+
+function clearNasToken(){
+ const field=document.getElementById('nasToken');
+ if(field){
+  field.value='';
+  field.type='password';
+ }
+}
+
+async function showNasToken(){
+ const field=document.getElementById('nasToken');
+ const message=document.getElementById('nasMessage');
+ try{
+  if(field.value && field.type==='text'){
+   clearNasToken();
+   message.textContent='Token hidden.';
+   return;
+  }
+  const r=await apiFetch('/api/nas/token',{cache:'no-store'});
+  if(!r.ok)throw new Error('Unable to retrieve NAS token');
+  const d=await r.json();
+  field.value=d.token;
+  field.type='text';
+  message.textContent='Token displayed. Keep it private.';
+ }catch(e){message.textContent=e.message;}
+}
+
+async function copyNasToken(){
+ const message=document.getElementById('nasMessage');
+ try{
+  const r=await apiFetch('/api/nas/token',{cache:'no-store'});
+  if(!r.ok)throw new Error('Unable to retrieve NAS token');
+  const d=await r.json();
+  await navigator.clipboard.writeText(d.token);
+  message.textContent='Token copied to clipboard.';
+ }catch(e){message.textContent=e.message;}
+}
+
+async function regenerateNasToken(){
+ const message=document.getElementById('nasMessage');
+ if(!confirm('Regenerate NAS token? The existing NAS token will immediately stop working.'))return;
+ try{
+  const r=await apiFetch('/api/nas/token/regenerate',{method:'POST'});
+  if(!r.ok)throw new Error('Unable to regenerate NAS token');
+  clearNasToken();
+  message.textContent='New token generated. Copy it to your NAS configuration.';
+ }catch(e){message.textContent=e.message;}
+}
+
 async function refreshAll(){await refreshStatus();await refreshHistory();}
+
+document.getElementById('nasUrl').value=location.origin+'/api/backup/latest';
 
 authStatus();
 </script>

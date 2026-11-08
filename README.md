@@ -3,7 +3,7 @@
 **[Configuration Guide — setup, Google Drive authorization, and required API access](https://lovintexas.github.io/eisy-backup/)**
 
 
-**Version 1.0.0**
+**Version 1.1.0**
 
 ## Overview
 
@@ -73,7 +73,55 @@ The eisy Backup plugin creates and downloads backup archives; it does not direct
 
 Protect downloaded backup ZIP files because they may contain sensitive system configuration.
 
+## NAS Backup Access
+
+Version 1.1.0 adds authenticated REST downloads for NAS systems.
+
+### Configuration
+
+1. Open the plugin's HTTPS interface on port 8768.
+2. Sign in as administrator.
+3. Under **NAS Backup Access**, click **Copy Token**.
+4. Configure the NAS to send an HTTPS GET request.
+
+**Download URL:**
+
+`https://EISY-IP:8768/api/backup/latest`
+
+**Authentication header:**
+
+`Authorization: Bearer YOUR_TOKEN`
+
+### Example
+
+```bash
+curl --fail --show-error \
+  --header "Authorization: Bearer YOUR_TOKEN" \
+  --output eisy-latest-backup.zip \
+  https://EISY-IP:8768/api/backup/latest
+```
+
+The endpoint downloads the newest successful backup
+still available locally. It does not create a new backup.
+
+Missing or invalid tokens return HTTP 401.
+If no successful local backup exists, HTTP 404 is returned.
+
+### Token management
+
+Administrators can show, copy, or regenerate the API token.
+Regeneration immediately invalidates the previous token.
+
+Keep the token and downloaded backups secure.
+Configure the NAS to trust the plugin's HTTPS certificate.
+
 ## Version History
+
+**1.1.0 — NAS REST backup downloads**
+
+- Added authenticated REST download of the latest backup.
+- Added NAS API token management to the HTML interface.
+- Added token regeneration and NAS setup documentation.
 
 **1.0.0 — Initial release**
 
