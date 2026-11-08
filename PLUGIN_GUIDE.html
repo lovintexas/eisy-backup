@@ -29,6 +29,11 @@ footer{text-align:center;color:var(--muted);font-size:.85rem;padding:0 20px 30px
 <p>The plugin requests the limited Google Drive <code>drive.file</code> permission, rather than unrestricted access to your entire Drive. Your Google account password is entered only on Google's authorization page.</p></section>
 <section class="card"><h2><span class="step">4</span> Set the backup folder</h2>
 <ol><li>Under <strong>Backup settings</strong>, enter your preferred <strong>Google Drive folder</strong> name.</li><li>Select <strong>Save settings</strong>.</li></ol>
+<p><strong>Important:</strong> Each eisy must use a different
+Google Drive folder. If two systems use the same folder, the backup
+retention policy on either system may delete backups created by the
+other system.</p>
+
 <p>The default folder name is <code>eisy Backups</code>.</p></section>
 <section class="card"><h2><span class="step">5</span> Create and verify a backup</h2>
 <ol><li>Click <strong>Backup Now</strong>.</li><li>Wait for the operation to finish.</li><li>Check <strong>Backup history</strong> for the result.</li><li>Confirm the archive is present in your Google Drive folder.</li><li>Optionally check the last backup status in the IoX Admin Console.</li></ol>

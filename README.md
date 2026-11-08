@@ -142,8 +142,9 @@ backups separate.
 The default folder name is `eisy Backups`.
 
 Each installation independently manages its backup history and
-retention settings. Use separate folders to avoid one installation
-affecting another system's cloud backups.
+retention settings. **Important:** Each eisy must use a different Google Drive folder.
+If two systems use the same folder, the backup retention policy on
+either system may delete backups created by the other system.
 
 ## Version History
 
