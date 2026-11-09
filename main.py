@@ -18,6 +18,26 @@ web_server = None
 web_thread = None
 
 
+def load_config_doc(polyglot):
+    """Publish configuration instructions in the PG3x Config tab."""
+    config_file = BASE / "CONFIG.md"
+
+    if not config_file.is_file():
+        LOGGER.warning("CONFIG.md not found")
+        return
+
+    try:
+        import markdown2
+        html = markdown2.markdown_path(
+            str(config_file),
+            extras=["tables", "fenced-code-blocks"],
+        )
+        polyglot.setCustomParamsDoc(html)
+        LOGGER.info("Published configuration documentation")
+    except Exception:
+        LOGGER.exception("Failed to publish CONFIG.md")
+
+
 def start_web_server(plugin_token=None):
     global web_server, web_thread
 
@@ -91,6 +111,8 @@ if __name__ == "__main__":
         polyglot.start("1.1.1")
 
         isy = udi_interface.ISY(polyglot)
+
+        load_config_doc(polyglot)
 
         polyglot.updateProfile()
 
