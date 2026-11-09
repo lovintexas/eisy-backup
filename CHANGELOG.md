@@ -1,5 +1,12 @@
 # Changelog
 
+## 1.1.1 — Backup History Permissions Fix
+
+- Fixed HTTP 500 errors when creating native eisy-ui backups.
+- Granted the eisyui service read/write access to backup history.
+- Preserved FreeBSD ACL permissions when replacing backup_history.json.
+- Maintained restricted access to backup history files.
+
 ## 1.1.0 — NAS REST Backup Access
 
 - Added REST endpoint `/api/backup/latest` to download the newest successful backup available locally.

@@ -3,7 +3,7 @@
 **[Configuration Guide — setup, Google Drive authorization, and required API access](https://lovintexas.github.io/eisy-backup/)**
 
 
-**Version 1.1.0**
+**Version 1.1.1**
 
 ## Overview
 
@@ -147,6 +147,11 @@ If two systems use the same folder, the backup retention policy on
 either system may delete backups created by the other system.
 
 ## Version History
+
+**1.1.1 — Backup history permissions fix**
+
+- Fixed HTTP 500 errors in native eisy-ui backups caused by backup history file permissions.
+- Preserved eisyui read/write access when backup history is replaced.
 
 **1.1.0 — NAS REST backup downloads**
 
