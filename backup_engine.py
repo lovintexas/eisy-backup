@@ -96,6 +96,7 @@ def save_history(history, directory):
     temp.write_text(json.dumps(history, indent=2))
     temp.chmod(0o600)
     subprocess.run(["setfacl", "-m", "u:polyglot:r:allow", str(temp)], check=True)
+    subprocess.run(["setfacl", "-m", "u:eisyui:rw:allow", str(temp)], check=True)
     temp.replace(path)
 
 
