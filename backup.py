@@ -23,7 +23,13 @@ class Controller(udi_interface.Node):
 
         from usb_backup_node import USBBackup
         self.usb_node = USBBackup(self.poly)
+        web_server.register_usb_backup_result_callback(
+            self.update_usb_backup_result
+        )
         self.usb_long_poll_count = 0
+
+    def update_usb_backup_result(self, value):
+        self.usb_node.setDriver("GV4", value, report=True)
 
     def start(self):
         LOGGER.info("eisy Backup controller started")
@@ -43,6 +49,7 @@ class Controller(udi_interface.Node):
         self.setDriver('GV1', web_server.load_config()['retention'])
         self.update_backup_history()
         self.usb_node.check_usb()
+        self.usb_node.update_backup_result()
 
     def poll(self, poll_type):
         if poll_type != "longPoll":
@@ -52,6 +59,7 @@ class Controller(udi_interface.Node):
         if self.usb_long_poll_count >= 3:
             self.usb_long_poll_count = 0
             self.usb_node.check_usb()
+            self.usb_node.update_backup_result()
             self.usb_node.reportDrivers()
 
     def update_backup_history(self):

@@ -17,6 +17,7 @@ class USBBackup(udi_interface.Node):
         {"driver": "GV1", "value": 0, "uom": 2, "name": "USB Mounted"},
         {"driver": "GV2", "value": 0, "uom": 2, "name": "USB Writable"},
         {"driver": "GV3", "value": 0, "uom": 56, "name": "USB Free Space MB"},
+        {"driver": "GV4", "value": 0, "uom": 25, "name": "Last USB Backup Result"},
     ]
 
     def __init__(self, polyglot):
@@ -95,8 +96,31 @@ class USBBackup(udi_interface.Node):
         self.setDriver("GV3", free_mb)
         self.setDriver("ST", 1 if mounted and writable else 2)
 
+    def update_backup_result(self):
+        """Restore the most recent USB backup result from history."""
+        from backup_engine import get_history
+
+        status_codes = {
+            "Success": 1,
+            "Failed": 2,
+            "Disabled": 3,
+        }
+
+        try:
+            history = get_history()
+            record = next(
+                (item for item in history if "usb_status" in item),
+                None,
+            )
+            status = record.get("usb_status") if record else None
+            self.setDriver("GV4", status_codes.get(status, 0))
+        except Exception:
+            LOGGER.exception("Unable to read USB backup result")
+            self.setDriver("GV4", 0)
+
     def query(self, command=None):
         self.check_usb()
+        self.update_backup_result()
         self.reportDrivers()
 
     def manual_check(self, command=None):

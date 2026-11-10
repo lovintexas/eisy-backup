@@ -166,6 +166,23 @@ def update_iox_backup_status(value):
             LOGGER.exception("Failed to update IoX backup status")
 
 
+
+_usb_backup_result_callback = None
+
+
+def register_usb_backup_result_callback(callback):
+    global _usb_backup_result_callback
+    _usb_backup_result_callback = callback
+
+
+def update_iox_usb_backup_result(value):
+    if _usb_backup_result_callback is not None:
+        try:
+            _usb_backup_result_callback(value)
+        except Exception:
+            LOGGER.exception("Failed to update IoX USB backup result")
+
+
 def backup_worker():
     from backup_engine import save_history, DEFAULT_BACKUP_DIRECTORY
 
@@ -192,12 +209,50 @@ def backup_worker():
             google_folder=config["google_drive_folder"]
         )
 
+        # USB copying is optional and independent of Google Drive success.
+        if config.get("usb_enabled"):
+            try:
+                from usb_backup import copy_backup_to_usb
+
+                archive = Path(DEFAULT_BACKUP_DIRECTORY) / result["filename"]
+                result["usb_backup"] = copy_backup_to_usb(
+                    archive,
+                    config.get("usb_device", ""),
+                    config.get("usb_retention", 7),
+                )
+                result["usb_status"] = "Success"
+            except Exception as exc:
+                LOGGER.exception("USB backup copy failed")
+                result["usb_status"] = "Failed"
+                result["usb_error"] = str(exc)
+        else:
+            result["usb_status"] = "Disabled"
+
+        # Persist USB results independently of Google Drive status.
+        from backup_engine import save_history
+        try:
+            history = get_history()
+            if history and history[0].get("filename") == result["filename"]:
+                history[0].update({
+                    k: result[k] for k in
+                    ("usb_status", "usb_backup", "usb_error")
+                    if k in result
+                })
+                save_history(history[:100], DEFAULT_BACKUP_DIRECTORY)
+        except Exception:
+            LOGGER.exception("Unable to persist USB backup result")
+
         with state_lock:
             backup_state["status"] = "Backup completed successfully"
             backup_state["last_backup"] = result
             backup_state["error"] = None
 
         update_iox_backup_status(1)
+        update_iox_usb_backup_result({
+            "Success": 1,
+            "Failed": 2,
+            "Disabled": 3,
+        }.get(result["usb_status"], 0))
         LOGGER.info("Backup completed: %s", result["filename"])
 
     except Exception as exc:

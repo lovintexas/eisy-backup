@@ -21,4 +21,7 @@
   <editor id="USBFreeSpace">
     <range uom="56" min="0" max="1000000" prec="0" />
   </editor>
+  <editor id="USBBackupResult">
+    <range uom="25" subset="0,1,2,3" nls="USBRESULT" />
+  </editor>
 </editors>

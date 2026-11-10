@@ -30,3 +30,9 @@ USBSTATUS-1 = Ready
 USBSTATUS-2 = Error
 USBBOOLEAN-0 = No
 USBBOOLEAN-1 = Yes
+
+ST-usbbackup-GV4-NAME = Last USB Backup Result
+USBRESULT-0 = Never Run
+USBRESULT-1 = Success
+USBRESULT-2 = Failed
+USBRESULT-3 = Disabled

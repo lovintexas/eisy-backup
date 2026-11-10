@@ -65,6 +65,21 @@
           "precision": 0
         }
       ]
+    },
+    {
+      "id": "usb_result",
+      "ranges": [
+        {
+          "uom": "25",
+          "subset": "0,1,2,3",
+          "names": {
+            "0": "Never Run",
+            "1": "Success",
+            "2": "Failed",
+            "3": "Disabled"
+          }
+        }
+      ]
     }
   ],
   "linkdefs": [],
@@ -141,6 +156,11 @@
           "id": "GV3",
           "name": "USB Free Space MB",
           "editor": "usb_free_space"
+        },
+        {
+          "id": "GV4",
+          "name": "Last USB Backup Result",
+          "editor": "usb_result"
         }
       ],
       "cmds": {

@@ -24,6 +24,7 @@
       <st id="GV1" editor="USBBoolean" />
       <st id="GV2" editor="USBBoolean" />
       <st id="GV3" editor="USBFreeSpace" />
+      <st id="GV4" editor="USBBackupResult" />
     </sts>
     <cmds>
       <sends />
