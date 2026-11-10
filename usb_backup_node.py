@@ -102,8 +102,13 @@ class USBBackup(udi_interface.Node):
 
     def query(self, command=None):
         self.check_usb()
+        self.reportDrivers()
+
+    def manual_check(self, command=None):
+        self.check_usb()
+        self.reportDrivers()
 
     commands = {
         "QUERY": query,
-        "CHECK_USB": check_usb,
+        "CHECK_USB": manual_check,
     }
