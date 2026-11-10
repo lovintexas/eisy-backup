@@ -30,11 +30,6 @@ class USBBackup(udi_interface.Node):
         from web_server import load_config
 
         config = load_config()
-        LOGGER.warning(
-            "USB CHECK EXECUTED: enabled=%s device=%s",
-            config.get("usb_enabled"),
-            config.get("usb_device"),
-        )
 
         if not config.get("usb_enabled"):
             self.setDriver("ST", 0)

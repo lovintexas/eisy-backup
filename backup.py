@@ -52,6 +52,7 @@ class Controller(udi_interface.Node):
         if self.usb_long_poll_count >= 3:
             self.usb_long_poll_count = 0
             self.usb_node.check_usb()
+            self.usb_node.reportDrivers()
 
     def update_backup_history(self):
         from datetime import datetime
