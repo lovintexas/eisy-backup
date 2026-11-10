@@ -13,7 +13,7 @@ code{background:#eaf0f8;border-radius:5px;padding:3px 6px;overflow-wrap:anywhere
 .muted{color:var(--muted)}.pill{display:inline-block;background:#e6f2ff;color:#174b82;border-radius:50px;padding:4px 11px;font-weight:650;font-size:.8rem;margin-bottom:12px}
 footer{text-align:center;color:var(--muted);font-size:.85rem;padding:0 20px 30px}@media(max-width:600px){header{padding:35px 20px}.card{padding:21px}}
 </style></head><body>
-<header><div class="wrap"><span class="pill">VERSION 1.1.1</span><h1>eisy Backup</h1><p>Configuration, Google Drive, and NAS backup guide</p></div></header>
+<header><div class="wrap"><span class="pill">VERSION 1.2.0</span><h1>eisy Backup</h1><p>Configuration, Google Drive, USB, and NAS backup guide</p></div></header>
 <main class="wrap">
 <section class="card critical"><h2>Important: Enable Unrestricted ISY Access</h2>
 <p><strong>Before creating your first backup, enable “Allow Unrestricted ISY Access” for the eisy Backup plugin in PG3x.</strong> The plugin requires this permission to request native system backups from IoX.</p>
@@ -38,6 +38,56 @@ other system.</p>
 <section class="card"><h2><span class="step">5</span> Create and verify a backup</h2>
 <ol><li>Click <strong>Backup Now</strong>.</li><li>Wait for the operation to finish.</li><li>Check <strong>Backup history</strong> for the result.</li><li>Confirm the archive is present in your Google Drive folder.</li><li>Optionally check the last backup status in the IoX Admin Console.</li></ol>
 <p>Version 1.0.0 provides <strong>on-demand</strong> backups; it does not include automatic scheduling.</p></section>
+
+<section class="card">
+<h2>USB Backup — Version 1.2.0</h2>
+<p>USB Backup provides an additional local copy of successful eisy
+backup archives, alongside the existing Google Drive backup workflow.</p>
+
+<h3>Configuration</h3>
+<ol>
+<li>Connect a USB storage device to the eisy.</li>
+<li>Ensure its selected partition is mounted read/write at
+<code>/mnt/usbbackup</code>.</li>
+<li>Open the plugin's HTTPS configuration page.</li>
+<li>Enable <strong>USB Backup</strong>.</li>
+<li>Select the USB device and configure USB retention.</li>
+<li>Save the settings.</li>
+<li>In the IoX Admin Console, select the
+<strong>USB Backup</strong> child node and press
+<strong>Check USB</strong>.</li>
+</ol>
+
+<h3>How USB Backups Work</h3>
+<p>After a successful normal backup, the plugin verifies the ZIP archive,
+copies it to USB storage, verifies the copied ZIP, and applies the
+independent USB retention setting.</p>
+<p>USB copying failures are reported separately and do not change the
+successful primary backup result.</p>
+
+<h3>USB Backup Status in IoX</h3>
+<ul>
+<li><strong>USB Status:</strong> Not Configured, Ready, or Error.</li>
+<li><strong>USB Mounted:</strong> Yes or No.</li>
+<li><strong>USB Writable:</strong> Yes or No.</li>
+<li><strong>USB Free Space MB:</strong> Available USB storage.</li>
+<li><strong>Last USB Backup Result:</strong>
+Never Run, Success, Failed, or Disabled.</li>
+</ul>
+
+<p><strong>Check USB</strong> refreshes drive readiness; it does not
+create a backup. Drive status is checked periodically, and backup
+results are preserved in backup history.</p>
+
+<h3>USB Troubleshooting</h3>
+<p>If the USB status is Error, confirm the selected device is connected,
+mounted read/write at <code>/mnt/usbbackup</code>, and has sufficient
+free space. The current implementation supports FreeBSD
+<code>msdosfs</code> USB partitions.</p>
+<p>USB storage is supplemental. Keep additional backup copies away
+from the eisy device.</p>
+</section>
+
 <section class="card"><h2>Downloading and restoring a backup</h2>
 <p>For a successful backup ZIP still available on the eisy, select <strong>Download</strong> in Backup history. The plugin normally retains only the newest local ZIP; retrieve older archives from Google Drive.</p>
 <p>To restore, download the desired ZIP and use the existing eisy-ui restore functionality. The plugin does not itself perform restores.</p></section>

@@ -3,7 +3,7 @@
 **[Configuration Guide — setup, Google Drive authorization, and required API access](https://lovintexas.github.io/eisy-backup/)**
 
 
-**Version 1.1.1**
+**Version 1.2.0**
 
 ## Overview
 
@@ -72,6 +72,69 @@ The eisy Backup plugin creates and downloads backup archives; it does not direct
 - See `PRIVACY.md` for the full privacy policy.
 
 Protect downloaded backup ZIP files because they may contain sensitive system configuration.
+
+## USB Backup
+
+Version 1.2.0 adds optional USB backup storage alongside Google Drive.
+
+### Configuration
+
+1. Connect a supported USB storage device to the eisy.
+2. Ensure the USB partition is mounted read/write at `/mnt/usbbackup`.
+3. Open the plugin's HTTPS configuration interface.
+4. Enable **USB Backup**.
+5. Select the USB device from the available device list.
+6. Set the number of USB backups to retain and save the configuration.
+7. Select **USB Backup** in the IoX Admin Console and use **Check USB** to verify the drive.
+
+The USB drive must be mounted before the plugin can copy backups.
+USB device mounting is managed by the operating system, not by the
+backup-copy operation.
+
+### Creating USB Backups
+
+When USB backup is enabled, each successful backup initiated through
+the web interface or IoX Admin Console is copied to USB storage after
+the normal backup process completes.
+
+The plugin:
+
+- Verifies the original ZIP archive.
+- Copies the archive to a temporary file on the USB drive.
+- Verifies the copied ZIP archive.
+- Renames the verified copy to its final filename.
+- Removes older USB backups according to the USB retention setting.
+
+USB retention is independent of local and Google Drive retention.
+
+If USB copying fails, the failure is recorded separately and does not
+change the successful primary backup result.
+
+### USB Backup IoX Node
+
+The **USB Backup** child node provides:
+
+- **USB Status:** Not Configured, Ready, or Error.
+- **USB Mounted:** Whether the selected drive is mounted.
+- **USB Writable:** Whether the drive accepts writes.
+- **USB Free Space MB:** Available storage space.
+- **Last USB Backup Result:** Never Run, Success, Failed, or Disabled.
+
+Use **Check USB** to refresh drive status. This command does not create
+a backup.
+
+Drive status is also checked periodically. The last USB backup result
+is saved in backup history and restored after plugin restart.
+
+### Important Notes
+
+- Use a USB device with sufficient free space for your backup archives.
+- The selected partition must be mounted read/write at `/mnt/usbbackup`.
+- The current USB copy implementation supports mounted FAT/MS-DOS
+  filesystems recognized as `msdosfs` by FreeBSD.
+- USB backups supplement Google Drive; they do not replace the
+  existing Google Drive backup workflow.
+- Keep at least one backup stored somewhere other than the eisy itself.
 
 ## NAS Backup Access
 
@@ -147,6 +210,13 @@ If two systems use the same folder, the backup retention policy on
 either system may delete backups created by the other system.
 
 ## Version History
+
+**1.2.0 — USB backup support**
+
+- Added optional USB backup copying and independent retention.
+- Added ZIP verification and interrupted-copy recovery.
+- Added USB Backup IoX child node with drive status and backup results.
+- Added persistent USB backup history and immediate IoX result updates.
 
 **1.1.1 — Backup history permissions fix**
 

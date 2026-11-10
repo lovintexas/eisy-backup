@@ -1,5 +1,17 @@
 # Changelog
 
+## 1.2.0 — USB Backup Support
+
+- Added automatic USB backup copying after successful native eisy backups.
+- Added USB device selection, enable/disable control, and independent USB retention settings.
+- Added ZIP integrity verification before and after copying to USB storage.
+- Added temporary-file handling for interrupted USB copies.
+- Added USB Backup child node in IoX with mount, write-access, and free-space status.
+- Added Check USB command and periodic USB status polling.
+- Added Last USB Backup Result status with Success, Failed, Disabled, and Never Run states.
+- Persisted USB backup results in backup history and restored them after plugin restart.
+- Kept USB copy failures independent of the primary backup success status.
+
 ## 1.1.1 — Backup History Permissions Fix
 
 - Fixed HTTP 500 errors when creating native eisy-ui backups.
