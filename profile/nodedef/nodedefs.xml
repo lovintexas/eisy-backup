@@ -1,4 +1,4 @@
-<?xml version='1.0' encoding='UTF-8'?>
+<?xml version='1.0' encoding='utf-8'?>
 <nodeDefs>
   <nodeDef id="controller" nls="controller">
     <sts>
@@ -15,6 +15,21 @@
         <cmd id="SET_RETENTION">
           <p id="" editor="BackupRetention" />
         </cmd>
+      </accepts>
+    </cmds>
+  </nodeDef>
+  <nodeDef id="usbbackup" nls="usbbackup">
+    <sts>
+      <st id="ST" editor="USBStatus" />
+      <st id="GV1" editor="USBBoolean" />
+      <st id="GV2" editor="USBBoolean" />
+      <st id="GV3" editor="USBFreeSpace" />
+    </sts>
+    <cmds>
+      <sends />
+      <accepts>
+        <cmd id="QUERY" />
+        <cmd id="CHECK_USB" />
       </accepts>
     </cmds>
   </nodeDef>

@@ -26,6 +26,45 @@
           "precision": 0
         }
       ]
+    },
+    {
+      "id": "usb_status",
+      "ranges": [
+        {
+          "uom": "25",
+          "subset": "0,1,2",
+          "names": {
+            "0": "Not Configured",
+            "1": "Ready",
+            "2": "Error"
+          }
+        }
+      ]
+    },
+    {
+      "id": "usb_boolean",
+      "ranges": [
+        {
+          "uom": "2",
+          "subset": "0,1",
+          "names": {
+            "0": "No",
+            "1": "Yes"
+          }
+        }
+      ]
+    },
+    {
+      "id": "usb_free_space",
+      "ranges": [
+        {
+          "uom": "56",
+          "min": 0,
+          "max": 1000000,
+          "step": 1,
+          "precision": 0
+        }
+      ]
     }
   ],
   "linkdefs": [],
@@ -70,6 +109,52 @@
                 "editor": "backup_retention"
               }
             ]
+          }
+        ]
+      },
+      "links": {
+        "ctl": [],
+        "rsp": []
+      }
+    },
+    {
+      "id": "usbbackup",
+      "name": "USB Backup",
+      "icon": "GenericCtl",
+      "properties": [
+        {
+          "id": "ST",
+          "name": "USB Status",
+          "editor": "usb_status"
+        },
+        {
+          "id": "GV1",
+          "name": "USB Mounted",
+          "editor": "usb_boolean"
+        },
+        {
+          "id": "GV2",
+          "name": "USB Writable",
+          "editor": "usb_boolean"
+        },
+        {
+          "id": "GV3",
+          "name": "USB Free Space MB",
+          "editor": "usb_free_space"
+        }
+      ],
+      "cmds": {
+        "sends": [],
+        "accepts": [
+          {
+            "id": "QUERY",
+            "name": "Query",
+            "native": "false"
+          },
+          {
+            "id": "CHECK_USB",
+            "name": "Check USB",
+            "native": "false"
           }
         ]
       },

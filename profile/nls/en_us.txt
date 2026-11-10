@@ -15,3 +15,18 @@ ST-controller-GV3-NAME = Last Backup Result
 BACKUPRESULT-0 = Never Run
 BACKUPRESULT-1 = Success
 BACKUPRESULT-2 = Failed
+
+ND-usbbackup-ICON = GenericCtl
+ND-usbbackup-NAME = USB Backup
+ST-usbbackup-ST-NAME = USB Status
+ST-usbbackup-GV1-NAME = USB Mounted
+ST-usbbackup-GV2-NAME = USB Writable
+ST-usbbackup-GV3-NAME = USB Free Space MB
+CMD-usbbackup-QUERY-NAME = Query
+CMD-usbbackup-CHECK_USB-NAME = Check USB
+
+USBSTATUS-0 = Not Configured
+USBSTATUS-1 = Ready
+USBSTATUS-2 = Error
+USBBOOLEAN-0 = No
+USBBOOLEAN-1 = Yes
