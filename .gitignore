@@ -34,3 +34,7 @@ google_auth/
 *.bak
 __pycache__/
 google_oauth_client.json
+
+# Local development rollback files
+*.before-*
+*.pre-replacement

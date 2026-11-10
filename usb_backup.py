@@ -10,13 +10,29 @@ from pathlib import Path
 
 LOGGER = logging.getLogger(__name__)
 MOUNT_POINT = Path("/mnt/usbbackup")
+BACKUP_DIR = MOUNT_POINT / "eisy-backups"
 BACKUP_PATTERN = re.compile(r"eisy-backup-\d{4}-\d{2}-\d{2}-\d{6}\.zip")
 
 
-def verify_mount(device):
-    """Confirm the selected device is mounted at the expected location."""
-    if not re.fullmatch(r"da\d+s\d+", device or ""):
+def verify_mount(device, volume_id):
+    """Verify the mounted USB partition and its registered volume ID."""
+    if not re.fullmatch(r"da\d+(?:s\d+|p\d+)", device or ""):
         raise RuntimeError("Invalid USB device selection")
+
+    if not re.fullmatch(r"[0-9A-F]{4}-[0-9A-F]{4}", volume_id or ""):
+        raise RuntimeError("USB drive must be registered in the HTML editor")
+
+    service = Path("/usr/local/etc/rc.d/eisy_usbbackup")
+    try:
+        service_text = service.read_text()
+    except OSError as exc:
+        raise RuntimeError("USB mount service is not configured") from exc
+
+    expected = f'# EISY_USB_DEVICE={device} VOLUME_ID={volume_id}'
+    if expected not in service_text.splitlines():
+        raise RuntimeError(
+            "USB mount setup does not match the registered drive"
+        )
 
     result = subprocess.run(
         ["/sbin/mount", "-p"],
@@ -39,7 +55,7 @@ def verify_mount(device):
     raise RuntimeError("Selected USB device is not mounted read/write")
 
 
-def copy_backup_to_usb(source, device, retention=3):
+def copy_backup_to_usb(source, device, retention=3, volume_id=""):
     """Copy a completed backup and retain the newest USB archives."""
     source = Path(source)
     retention = int(retention)
@@ -54,16 +70,23 @@ def copy_backup_to_usb(source, device, retention=3):
         if archive.testzip() is not None:
             raise RuntimeError("Source backup ZIP failed verification")
 
-    verify_mount(device)
+    # Never create a backup directory unless the USB is mounted.
+    verify_mount(device, volume_id)
+    if BACKUP_DIR.is_symlink():
+        raise RuntimeError("Unsafe USB backup directory")
+    BACKUP_DIR.mkdir(exist_ok=True)
+    verify_mount(device, volume_id)
+    if BACKUP_DIR.is_symlink() or not BACKUP_DIR.is_dir():
+        raise RuntimeError("Unsafe USB backup directory")
 
-    destination = MOUNT_POINT / source.name
-    partial = MOUNT_POINT / (source.name + ".part")
+    destination = BACKUP_DIR / source.name
+    partial = BACKUP_DIR / (source.name + ".part")
 
     if source.stat().st_size > shutil.disk_usage(MOUNT_POINT).free:
         raise RuntimeError("Insufficient USB free space")
 
     try:
-        verify_mount(device)
+        verify_mount(device, volume_id)
 
         # Remove an incomplete copy left by a previous interrupted backup.
         if partial.exists():
@@ -71,7 +94,7 @@ def copy_backup_to_usb(source, device, retention=3):
                 raise RuntimeError("Unsafe USB temporary file")
             partial.unlink()
 
-        verify_mount(device)
+        verify_mount(device, volume_id)
 
         with source.open("rb") as src, partial.open("xb") as dst:
             shutil.copyfileobj(src, dst, length=1024 * 1024)
@@ -85,12 +108,12 @@ def copy_backup_to_usb(source, device, retention=3):
             if archive.testzip() is not None:
                 raise RuntimeError("USB backup ZIP failed verification")
 
-        verify_mount(device)
+        verify_mount(device, volume_id)
         partial.replace(destination)
 
         archives = sorted(
             (
-                p for p in MOUNT_POINT.iterdir()
+                p for p in BACKUP_DIR.iterdir()
                 if p.is_file() and BACKUP_PATTERN.fullmatch(p.name)
             ),
             key=lambda p: p.name,
@@ -98,7 +121,7 @@ def copy_backup_to_usb(source, device, retention=3):
         )
 
         for old in archives[retention:]:
-            verify_mount(device)
+            verify_mount(device, volume_id)
             old.unlink()
             LOGGER.info("Removed expired USB backup: %s", old.name)
 
@@ -107,7 +130,7 @@ def copy_backup_to_usb(source, device, retention=3):
 
     finally:
         try:
-            verify_mount(device)
+            verify_mount(device, volume_id)
             partial.unlink(missing_ok=True)
         except Exception:
             LOGGER.warning("Unable to clean up USB temporary file", exc_info=True)

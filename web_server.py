@@ -61,6 +61,7 @@ DEFAULT_CONFIG = {
     "google_drive_folder": "eisy Backups",
     "usb_enabled": False,
     "usb_device": "",
+    "usb_volume_id": "",
     "usb_retention": 7
 }
 
@@ -219,6 +220,7 @@ def backup_worker():
                     archive,
                     config.get("usb_device", ""),
                     config.get("usb_retention", 7),
+                    volume_id=config.get("usb_volume_id", ""),
                 )
                 result["usb_status"] = "Success"
             except Exception as exc:
@@ -449,7 +451,6 @@ def recover_password(data: PasswordRecovery, request: Request, response: Respons
 class ConfigUpdate(BaseModel):
     google_drive_folder: str = "eisy Backups"
     usb_enabled: bool = False
-    usb_device: str = ""
     usb_retention: int = Field(default=7, ge=1, le=100)
 
 
@@ -457,6 +458,114 @@ class ConfigUpdate(BaseModel):
 def get_usb_devices(auth=Depends(authenticated)):
     from usb_storage import discover_usb_partitions
     return {"devices": discover_usb_partitions()}
+
+
+
+class UsbRegistration(BaseModel):
+    partition: str
+
+
+@app.post("/api/usb/register")
+def register_usb_device(data: UsbRegistration, auth=Depends(authenticated)):
+    from usb_storage import discover_usb_partitions
+
+    with state_lock:
+        if backup_state["running"]:
+            raise HTTPException(409, "Backup is running")
+
+        devices = discover_usb_partitions()
+        selected = next(
+            (d for d in devices if d["partition"] == data.partition),
+            None,
+        )
+
+        if selected is None:
+            raise HTTPException(400, "Selected USB drive was not detected")
+
+        config = load_config()
+        config["usb_device"] = data.partition
+        config["usb_volume_id"] = ""
+        config["usb_enabled"] = False
+        save_config(config)
+
+    return {
+        "success": True,
+        "partition": data.partition,
+        "volume_id": "",
+        "size_mb": selected["size_mb"],
+        "message": "Drive selected. Run USB setup over SSH to verify its identity.",
+    }
+
+
+@app.get("/api/usb/setup-command")
+def usb_setup_command(auth=Depends(authenticated)):
+    import re
+
+    installed = Path(__file__).resolve().parent
+
+    if not re.fullmatch(
+        r"/var/eisyui/ns/plugin_[0-9]+", str(installed)
+    ):
+        raise HTTPException(
+            400, "USB setup command available after plugin installation"
+        )
+
+    return {
+        "command": f"sudo sh {installed}/setup_usb.sh --install"
+    }
+
+
+@app.post("/api/usb/complete")
+def complete_usb_registration(auth=Depends(authenticated)):
+    import re
+    from usb_backup import verify_mount
+
+    config = load_config()
+    device = config.get("usb_device", "")
+
+    if not re.fullmatch(r"da[0-9]+(?:s[0-9]+|p[0-9]+)", device):
+        raise HTTPException(400, "Select and register a USB drive first")
+
+    service_path = Path("/usr/local/etc/rc.d/eisy_usbbackup")
+
+    try:
+        if service_path.is_symlink():
+            raise ValueError("Unexpected service symlink")
+
+        metadata = service_path.read_text()
+    except (OSError, ValueError):
+        raise HTTPException(400, "USB mount service is not installed")
+
+    match = re.search(
+        r"^# EISY_USB_DEVICE=" + re.escape(device) +
+        r" VOLUME_ID=([0-9A-F]{4}-[0-9A-F]{4})$",
+        metadata,
+        re.MULTILINE,
+    )
+
+    if not match:
+        raise HTTPException(
+            400,
+            "USB mount service does not match the selected drive"
+        )
+
+    volume_id = match.group(1)
+
+    try:
+        verify_mount(device, volume_id)
+    except (RuntimeError, OSError, ValueError) as exc:
+        raise HTTPException(400, str(exc)) from exc
+
+    config["usb_volume_id"] = volume_id
+    config["usb_enabled"] = False
+    save_config(config)
+
+    return {
+        "success": True,
+        "partition": device,
+        "volume_id": volume_id,
+        "message": "USB registration complete. Backups can now be enabled.",
+    }
 
 
 @app.get("/api/config")
@@ -467,9 +576,21 @@ def get_config(auth=Depends(authenticated)):
 @app.post("/api/config")
 def update_config(data: ConfigUpdate, auth=Depends(authenticated)):
     config = load_config()
-    config.update(data.model_dump())
-    save_config(config)
-    return {"success": True, "config": config}
+    updated = {**config, **data.model_dump()}
+
+    if updated.get("usb_enabled"):
+        from usb_backup import verify_mount
+
+        try:
+            verify_mount(
+                updated.get("usb_device", ""),
+                updated.get("usb_volume_id", ""),
+            )
+        except (RuntimeError, OSError, ValueError) as exc:
+            raise HTTPException(400, str(exc)) from exc
+
+    save_config(updated)
+    return {"success": True, "config": updated}
 
 
 def start_backup_job():
@@ -635,6 +756,187 @@ def regenerate_nas_token(auth=Depends(authenticated)):
         content=__import__("json").dumps({"token": token}),
         media_type="application/json",
         headers={"Cache-Control": "no-store"}
+    )
+
+
+def usb_control_busy():
+    with state_lock:
+        return backup_state["running"]
+
+
+@app.post("/api/usb/mount")
+def mount_usb_drive(auth=Depends(authenticated)):
+    from usb_backup import verify_mount
+
+    with state_lock:
+        if backup_state["running"]:
+            raise HTTPException(409, "Backup is running")
+
+        config = load_config()
+        if not config.get("usb_device") or not config.get("usb_volume_id"):
+            raise HTTPException(400, "Complete USB registration first")
+
+        try:
+            result = subprocess.run(
+                ["/usr/local/bin/sudo", "-n", "/usr/local/sbin/eisy-usb-control", "mount"],
+                capture_output=True, text=True, timeout=30,
+            )
+        except subprocess.TimeoutExpired:
+            raise HTTPException(504, "USB mount operation timed out")
+
+        if result.returncode:
+            raise HTTPException(
+                400, result.stderr.strip() or result.stdout.strip()
+            )
+
+        try:
+            verify_mount(config["usb_device"], config["usb_volume_id"])
+        except (RuntimeError, OSError, ValueError) as exc:
+            raise HTTPException(400, str(exc)) from exc
+
+    return {"message": "Registered USB drive mounted successfully."}
+
+
+@app.post("/api/usb/unmount")
+def unmount_usb_drive(auth=Depends(authenticated)):
+    with state_lock:
+        if backup_state["running"]:
+            raise HTTPException(409, "Backup is running")
+
+        result = subprocess.run(
+            ["/usr/local/bin/sudo", "-n", "/usr/local/sbin/eisy-usb-control", "unmount"],
+            capture_output=True, text=True, timeout=30,
+        )
+        if result.returncode:
+            raise HTTPException(
+                400, result.stderr.strip() or result.stdout.strip()
+            )
+
+        config = load_config()
+        config["usb_enabled"] = False
+        save_config(config)
+
+    return {"message": "USB drive safely unmounted. You may remove it."}
+
+
+@app.post("/api/usb/unregister")
+def unregister_usb_drive(auth=Depends(authenticated)):
+    with state_lock:
+        if backup_state["running"]:
+            raise HTTPException(409, "Backup is running")
+
+        result = subprocess.run(
+            ["/usr/local/bin/sudo", "-n", "/usr/local/sbin/eisy-usb-control", "unregister"],
+            capture_output=True,
+            text=True,
+            timeout=30,
+        )
+
+        if result.returncode:
+            raise HTTPException(
+                400, result.stderr.strip() or result.stdout.strip()
+            )
+
+        config = load_config()
+        config["usb_enabled"] = False
+        config["usb_device"] = ""
+        config["usb_volume_id"] = ""
+        save_config(config)
+
+    return {
+        "message": "USB drive unregistered. Existing backup files were preserved."
+    }
+
+
+@app.get("/api/usb/backups")
+def list_usb_backups(auth=Depends(authenticated)):
+    import os
+    import re
+    from usb_backup import verify_mount
+
+    config = load_config()
+
+    try:
+        verify_mount(
+            config.get("usb_device", ""),
+            config.get("usb_volume_id", ""),
+        )
+    except (RuntimeError, OSError, ValueError) as exc:
+        raise HTTPException(400, str(exc)) from exc
+
+    directory = Path("/mnt/usbbackup/eisy-backups")
+
+    if not directory.is_dir() or directory.is_symlink():
+        raise HTTPException(404, "USB backup directory not found")
+
+    archives = []
+
+    for entry in directory.iterdir():
+        if not re.fullmatch(
+            r"eisy-backup-\d{4}-\d{2}-\d{2}-\d{6}\.zip",
+            entry.name,
+        ):
+            continue
+
+        if entry.is_symlink() or not entry.is_file():
+            continue
+
+        stat = entry.stat()
+        archives.append({
+            "filename": entry.name,
+            "size": stat.st_size,
+            "modified": stat.st_mtime,
+        })
+
+    archives.sort(key=lambda item: item["filename"], reverse=True)
+
+    usage = os.statvfs(directory)
+
+    return {
+        "device": config["usb_device"],
+        "volume_id": config["usb_volume_id"],
+        "total_bytes": usage.f_blocks * usage.f_frsize,
+        "free_bytes": usage.f_bavail * usage.f_frsize,
+        "backups": archives,
+    }
+
+
+@app.get("/api/usb/backups/{filename}")
+def download_usb_backup(filename: str, auth=Depends(authenticated)):
+    import re
+    from usb_backup import verify_mount
+
+    if not re.fullmatch(
+        r"eisy-backup-\d{4}-\d{2}-\d{2}-\d{6}\.zip",
+        filename,
+    ):
+        raise HTTPException(400, "Invalid backup filename")
+
+    config = load_config()
+
+    try:
+        verify_mount(
+            config.get("usb_device", ""),
+            config.get("usb_volume_id", ""),
+        )
+    except (RuntimeError, OSError, ValueError) as exc:
+        raise HTTPException(400, str(exc)) from exc
+
+    directory = Path("/mnt/usbbackup/eisy-backups")
+
+    if directory.is_symlink() or not directory.is_dir():
+        raise HTTPException(404, "USB backup directory not found")
+
+    path = directory / filename
+
+    if path.is_symlink() or not path.is_file():
+        raise HTTPException(404, "USB backup not found")
+
+    return FileResponse(
+        path,
+        media_type="application/zip",
+        filename=filename,
+        headers={"Cache-Control": "no-store"},
     )
 
 
@@ -821,7 +1123,14 @@ th{color:#687586}
 </div>
 
 <div class="card">
-<h2>Backup settings</h2>
+<div class="card">
+<h2>Google Drive Backup</h2>
+<label>Enter a Name for Your Google Drive Folder</label>
+<input id="google_drive_folder" type="text" value="eisy Backups">
+</div>
+
+<div class="card">
+<h2>USB Backup Settings</h2>
 <div class="grid">
 
 <div style="grid-column:1/-1">
@@ -838,16 +1147,33 @@ Enable USB backups
 <option value="">Loading USB drives...</option>
 </select>
 <button type="button" onclick="loadUsbDevices()">Refresh USB drives</button>
+<button type="button" onclick="registerUsbDrive()">Register USB Drive</button>
+<p id="usbRegistered" class="note" style="font-size:17px;font-weight:700;color:inherit;margin:12px 0;">Registered drive: Loading...</p>
+<p id="usbRegistrationMessage" class="note" style="font-size:15px;font-weight:600;color:inherit;"></p>
+<button type="button" onclick="showUsbSetup()">USB Setup Instructions</button>
+<button type="button" onclick="completeUsbRegistration()">Complete Registration</button>
+<div style="display:flex;gap:8px;flex-wrap:wrap;margin-top:10px">
+<button type="button" onclick="mountUsbDrive()">Mount USB Drive</button>
+<button type="button" onclick="unmountUsbDrive()">Safely Remove USB Drive</button>
+<button type="button" onclick="unregisterUsbDrive()">Unregister USB Drive</button>
+</div>
 <div>
 <label>USB backups to retain</label>
 <input id="usb_retention" type="number" min="1" max="100" value="7">
 </div>
 </div>
 
-<div><label>Google Drive folder</label><input id="google_drive_folder" type="text" value="eisy Backups"></div>
 </div>
 <button onclick="saveConfig()">Save settings</button>
 <div id="configMessage" class="note"></div>
+</div>
+
+<div class="card">
+<h2>USB Backup Storage</h2>
+<p class="note">Backups currently stored on the registered USB drive.</p>
+<div id="usbStorageStatus" class="note">Loading USB storage...</div>
+<button type="button" onclick="loadUsbBackups()">Refresh USB backups</button>
+<div id="usbBackupList"></div>
 </div>
 
 <div class="card">
@@ -1145,6 +1471,205 @@ async function loadGoogleConnection(){
  }
 }
 
+async function registerUsbDrive(){
+ const partition=document.getElementById('usb_device').value;
+ const message=document.getElementById('usbRegistrationMessage');
+
+ if(!partition){
+  message.textContent='Select a USB drive first.';
+  return;
+ }
+
+ if(!confirm(
+  `Register ${partition} as the USB backup drive? `+
+  'This will replace any previous registration and disable USB backups until setup is completed.'
+ ))return;
+
+ try{
+  const r=await apiFetch('/api/usb/register',{
+   method:'POST',
+   headers:{'Content-Type':'application/json'},
+   body:JSON.stringify({partition})
+  });
+  const d=await r.json();
+  if(!r.ok)throw new Error(d.detail||'Registration failed');
+
+  document.getElementById('usbRegistered').textContent=
+   `Selected drive: ${d.partition} — setup pending`;
+  document.getElementById('usb_enabled').checked=false;
+  message.textContent=d.message;
+
+  // Immediately display the SSH command after registration.
+  await showUsbSetup();
+
+ }catch(e){
+  message.textContent=e.message;
+ }
+}
+
+async function mountUsbDrive(){
+ if(!confirm('Mount the registered USB backup drive?'))return;
+
+ const message=document.getElementById('usbRegistrationMessage');
+
+ try{
+  const r=await apiFetch('/api/usb/mount',{method:'POST'});
+  const d=await r.json();
+  if(!r.ok)throw new Error(d.detail||'Mount failed');
+
+  message.textContent=d.message;
+  await loadConfig();
+  await loadUsbBackups();
+ }catch(e){
+  message.textContent=e.message;
+ }
+}
+
+async function unmountUsbDrive(){
+ if(!confirm(
+  'Safely unmount the USB drive? USB backups will be disabled until it is mounted again.'
+ ))return;
+
+ const message=document.getElementById('usbRegistrationMessage');
+
+ try{
+  const r=await apiFetch('/api/usb/unmount',{method:'POST'});
+  const d=await r.json();
+  if(!r.ok)throw new Error(d.detail||'Unmount failed');
+
+  document.getElementById('usb_enabled').checked=false;
+  message.textContent=d.message;
+  document.getElementById('usbStorageStatus').textContent=
+   'USB drive safely unmounted.';
+  document.getElementById('usbBackupList').replaceChildren();
+ }catch(e){
+  message.textContent=e.message;
+ }
+}
+
+async function unregisterUsbDrive(){
+ if(!confirm(
+  'Unregister this USB drive? It must be safely unmounted first. '+
+  'Existing backup archives will NOT be deleted.'
+ ))return;
+
+ const message=document.getElementById('usbRegistrationMessage');
+
+ try{
+  const r=await apiFetch('/api/usb/unregister',{method:'POST'});
+  const d=await r.json();
+  if(!r.ok)throw new Error(d.detail||'Unregister failed');
+
+  document.getElementById('usb_enabled').checked=false;
+  document.getElementById('usbRegistered').textContent=
+   'No USB drive registered';
+  document.getElementById('usbStorageStatus').textContent=
+   'No USB drive registered.';
+  document.getElementById('usbBackupList').replaceChildren();
+
+  message.textContent=d.message;
+ }catch(e){
+  message.textContent=e.message;
+ }
+}
+
+async function showUsbSetup(){
+ try{
+  const r=await apiFetch('/api/usb/setup-command');
+  const d=await r.json();
+  if(!r.ok)throw new Error(d.detail||'Unable to get setup command');
+  window.prompt(
+   'STEP 1: Copy and run this command over SSH.\n\n' +
+   'STEP 2: After the command completes successfully, return to this USB Backup page and click Complete Registration.\n\n' +
+   'Your USB drive will then be verified and ready to use.',
+   d.command
+  );
+ }catch(e){
+  document.getElementById('usbRegistrationMessage').textContent=e.message;
+ }
+}
+
+async function completeUsbRegistration(){
+ const message=document.getElementById('usbRegistrationMessage');
+ try{
+  const r=await apiFetch('/api/usb/complete',{method:'POST'});
+  const d=await r.json();
+  if(!r.ok)throw new Error(d.detail||'Registration incomplete');
+  document.getElementById('usbRegistered').textContent=
+   `Registered drive: ${d.partition} — ${d.volume_id}`;
+  document.getElementById('usb_enabled').checked=false;
+  message.textContent=d.message;
+ }catch(e){
+  message.textContent=e.message;
+ }
+}
+
+async function loadUsbBackups(){
+ const status=document.getElementById('usbStorageStatus');
+ const list=document.getElementById('usbBackupList');
+ if(!status||!list)return;
+
+ status.textContent='Loading USB backups...';
+ list.replaceChildren();
+
+ try{
+  const r=await apiFetch('/api/usb/backups');
+  const d=await r.json();
+
+  if(!r.ok)throw new Error(d.detail||'Unable to read USB storage');
+
+  const mb=n=>(n/1048576).toFixed(1)+' MB';
+
+  status.textContent=
+   `${d.device} — ${d.volume_id} | `+
+   `${d.backups.length} backups | `+
+   `${mb(d.free_bytes)} free of ${mb(d.total_bytes)}`;
+
+  if(!d.backups.length){
+   list.textContent='No USB backups found.';
+   return;
+  }
+
+  const table=document.createElement('table');
+  const header=document.createElement('tr');
+
+  for(const name of ['Backup file','Size','Download']){
+   const th=document.createElement('th');
+   th.textContent=name;
+   header.appendChild(th);
+  }
+  table.appendChild(header);
+
+  for(const backup of d.backups){
+   const tr=document.createElement('tr');
+
+   const filename=document.createElement('td');
+   filename.textContent=backup.filename;
+
+   const size=document.createElement('td');
+   size.textContent=mb(backup.size);
+
+   const action=document.createElement('td');
+   const button=document.createElement('button');
+   button.type='button';
+   button.textContent='Download';
+   button.onclick=()=>{
+    window.location.href=
+     '/api/usb/backups/'+encodeURIComponent(backup.filename);
+   };
+
+   action.appendChild(button);
+   tr.append(filename,size,action);
+   table.appendChild(tr);
+  }
+
+  list.appendChild(table);
+
+ }catch(e){
+  status.textContent=e.message;
+ }
+}
+
 async function loadUsbDevices(){
  const select=document.getElementById('usb_device');
  if(!select)return;
@@ -1176,17 +1701,23 @@ async function loadConfig(){
   document.getElementById('google_drive_folder').value=c.google_drive_folder;
   document.getElementById('usb_enabled').checked=!!c.usb_enabled;
   document.getElementById('usb_retention').value=c.usb_retention;
+  document.getElementById('usbRegistered').textContent=
+   c.usb_volume_id
+    ? `Registered drive: ${c.usb_device} — ${c.usb_volume_id}`
+    : (c.usb_device
+       ? `Selected drive: ${c.usb_device} — setup pending`
+       : 'No USB drive registered');
   const usbSelect=document.getElementById('usb_device');
   if([...usbSelect.options].some(o=>o.value===c.usb_device))
    usbSelect.value=c.usb_device;
  }catch(e){}
+ await loadUsbBackups();
 }
 
 async function saveConfig(){
  const c={
   google_drive_folder:document.getElementById('google_drive_folder').value.trim()||'eisy Backups',
   usb_enabled:document.getElementById('usb_enabled').checked,
-  usb_device:document.getElementById('usb_device').value,
   usb_retention:Number(document.getElementById('usb_retention').value)
  };
  try{

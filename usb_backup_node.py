@@ -52,44 +52,31 @@ class USBBackup(udi_interface.Node):
         free_mb = 0
 
         try:
-            result = subprocess.run(
-                ["/sbin/mount", "-p"],
-                capture_output=True,
-                text=True,
-                check=True,
-                timeout=10,
+            from usb_backup import verify_mount
+
+            verify_mount(
+                selected,
+                config.get("usb_volume_id", ""),
+            )
+            mounted = True
+
+            try:
+                with tempfile.NamedTemporaryFile(
+                    dir=MOUNT_POINT,
+                    prefix=".eisy-usb-test-",
+                ):
+                    pass
+                writable = True
+            except OSError:
+                LOGGER.exception("USB write test failed")
+
+            stat = os.statvfs(MOUNT_POINT)
+            free_mb = int(
+                stat.f_bavail * stat.f_frsize / 1048576
             )
 
-            for line in result.stdout.splitlines():
-                fields = line.split()
-                if len(fields) >= 2:
-                    device = fields[0]
-                    mountpoint = fields[1]
-                    if (
-                        mountpoint == str(MOUNT_POINT)
-                        and device == f"/dev/{selected}"
-                    ):
-                        mounted = True
-                        break
-
-            if mounted:
-                try:
-                    with tempfile.NamedTemporaryFile(
-                        dir=MOUNT_POINT,
-                        prefix=".eisy-usb-test-",
-                    ):
-                        pass
-                    writable = True
-                except OSError:
-                    LOGGER.exception("USB write test failed")
-
-                free_mb = os.statvfs(MOUNT_POINT)
-                free_mb = int(
-                    free_mb.f_bavail * free_mb.f_frsize / 1048576
-                )
-
-        except Exception:
-            LOGGER.exception("USB status check failed")
+        except Exception as exc:
+            LOGGER.warning("USB drive verification failed: %s", exc)
 
         self.setDriver("GV1", int(mounted))
         self.setDriver("GV2", int(writable))

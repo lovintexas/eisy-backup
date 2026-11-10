@@ -9,7 +9,7 @@
 
 eisy Backup is a Universal Devices plugin for creating native eisy system backups and uploading them directly to your own Google Drive account.
 
-Version 1.0.0 provides on-demand backups, Google Drive authorization, backup history, configurable Google Drive folder, retention management, local backup downloads, and IoX status reporting.
+eisy Backup provides on-demand and scheduled native backups, Google Drive integration, optional USB storage, backup history, retention management, local downloads, and IoX status reporting.
 
 ## Requirements
 
@@ -43,7 +43,7 @@ The plugin requests the Google Drive `drive.file` scope, which limits access to 
 3. Wait for the backup operation to complete.
 4. Confirm the result in Backup History and the IoX Admin Console.
 
-Backups are initiated on demand in version 1.0.0. Automatic scheduling is not included in this release.
+Backups can be initiated on demand or configured to run automatically using the scheduling settings in the web interface.
 
 ## Backup History and Downloads
 
@@ -77,25 +77,33 @@ Protect downloaded backup ZIP files because they may contain sensitive system co
 
 Version 1.2.0 adds optional USB backup storage alongside Google Drive.
 
-### Configuration
+### Initial USB Drive Registration
 
-1. Connect a supported USB storage device to the eisy.
-2. Ensure the USB partition is mounted read/write at `/mnt/usbbackup`.
-3. Open the plugin's HTTPS configuration interface.
-4. Enable **USB Backup**.
-5. Select the USB device from the available device list.
-6. Set the number of USB backups to retain and save the configuration.
-7. Select **USB Backup** in the IoX Admin Console and use **Check USB** to verify the drive.
+1. Connect a supported FAT-formatted USB drive to the eisy.
+2. Open the eisy Backup HTTPS web interface.
+3. Under USB Backup Settings, select the drive from the USB device list.
+4. Click **Register USB Drive**.
+5. A dialog displays the SSH command required to install and configure the USB mount service.
+6. Copy the command and execute it in an SSH session connected to the eisy.
+7. Return to the web interface and click **Complete Registration**.
+8. Verify that the registered drive is recognized.
+9. Enable USB backups and save settings.
 
-The USB drive must be mounted before the plugin can copy backups.
-USB device mounting is managed by the operating system, not by the
-backup-copy operation.
+The setup process verifies the drive's FAT volume ID before installing
+the mount service. The service automatically mounts the registered
+drive at boot.
+
+The USB backup directory is created automatically at:
+
+`/mnt/usbbackup/eisy-backups/`
+
+The USB drive is not formatted by the registration process. It must
+already have a supported FAT filesystem.
 
 ### Creating USB Backups
 
-When USB backup is enabled, each successful backup initiated through
-the web interface or IoX Admin Console is copied to USB storage after
-the normal backup process completes.
+When USB backups are enabled, each successful native eisy backup is
+copied to the registered USB drive.
 
 The plugin:
 
@@ -105,10 +113,47 @@ The plugin:
 - Renames the verified copy to its final filename.
 - Removes older USB backups according to the USB retention setting.
 
-USB retention is independent of local and Google Drive retention.
+USB retention is independent of Google Drive and local retention.
 
-If USB copying fails, the failure is recorded separately and does not
-change the successful primary backup result.
+USB copy failures are recorded separately and do not change the
+success status of the primary backup.
+
+### Viewing and Downloading USB Backups
+
+The **USB Backup Storage** section of the web interface displays:
+
+- Saved backup filenames.
+- File sizes.
+- Available and total USB storage capacity.
+- Download links for individual backup archives.
+
+The USB storage listing is available when the registered drive is
+mounted and recognized.
+
+### Safely Removing or Replacing a USB Drive
+
+Before physically disconnecting a drive:
+
+1. Open USB Backup Settings in the web interface.
+2. Click **Safely Remove USB Drive**.
+3. Confirm the operation.
+4. Wait for the interface to report successful removal.
+5. Verify that USB backups are disabled before disconnecting the drive.
+
+To unregister a drive, safely unmount it first, then click
+**Unregister USB Drive**. Existing backup archives are not deleted.
+
+To replace a drive:
+
+1. Safely remove and unregister the existing drive.
+2. Disconnect the old drive and connect the replacement.
+3. Refresh the USB device list.
+4. Register the replacement drive.
+5. Execute the newly displayed SSH setup command.
+6. Return to the web interface and click **Complete Registration**.
+7. Enable USB backups.
+
+The replacement drive must have a supported FAT filesystem.
 
 ### USB Backup IoX Node
 
@@ -120,21 +165,19 @@ The **USB Backup** child node provides:
 - **USB Free Space MB:** Available storage space.
 - **Last USB Backup Result:** Never Run, Success, Failed, or Disabled.
 
-Use **Check USB** to refresh drive status. This command does not create
-a backup.
+Use **Check USB** to refresh drive status. This command does not
+create a backup.
 
 Drive status is also checked periodically. The last USB backup result
 is saved in backup history and restored after plugin restart.
 
 ### Important Notes
 
-- Use a USB device with sufficient free space for your backup archives.
-- The selected partition must be mounted read/write at `/mnt/usbbackup`.
-- The current USB copy implementation supports mounted FAT/MS-DOS
-  filesystems recognized as `msdosfs` by FreeBSD.
-- USB backups supplement Google Drive; they do not replace the
-  existing Google Drive backup workflow.
-- Keep at least one backup stored somewhere other than the eisy itself.
+- USB backup storage is optional.
+- Supported USB filesystems are FAT/MS-DOS filesystems recognized as
+  `msdosfs` by FreeBSD.
+- USB backups supplement Google Drive; they do not replace it.
+- Keep at least one backup somewhere other than the eisy itself.
 
 ## NAS Backup Access
 
