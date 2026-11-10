@@ -58,7 +58,10 @@ recovery_lock = threading.Lock()
 
 DEFAULT_CONFIG = {
     "retention": 7,
-    "google_drive_folder": "eisy Backups"
+    "google_drive_folder": "eisy Backups",
+    "usb_enabled": False,
+    "usb_device": "",
+    "usb_retention": 7
 }
 
 
@@ -390,6 +393,15 @@ def recover_password(data: PasswordRecovery, request: Request, response: Respons
 
 class ConfigUpdate(BaseModel):
     google_drive_folder: str = "eisy Backups"
+    usb_enabled: bool = False
+    usb_device: str = ""
+    usb_retention: int = Field(default=7, ge=1, le=100)
+
+
+@app.get("/api/usb/devices")
+def get_usb_devices(auth=Depends(authenticated)):
+    from usb_storage import discover_usb_partitions
+    return {"devices": discover_usb_partitions()}
 
 
 @app.get("/api/config")
@@ -757,6 +769,26 @@ th{color:#687586}
 <h2>Backup settings</h2>
 <div class="grid">
 
+<div style="grid-column:1/-1">
+<label style="display:flex;align-items:center;gap:10px">
+<input id="usb_enabled" type="checkbox"
+       style="width:auto;margin:0">
+Enable USB backups
+</label>
+</div>
+
+<div>
+<label>USB backup drive</label>
+<select id="usb_device">
+<option value="">Loading USB drives...</option>
+</select>
+<button type="button" onclick="loadUsbDevices()">Refresh USB drives</button>
+<div>
+<label>USB backups to retain</label>
+<input id="usb_retention" type="number" min="1" max="100" value="7">
+</div>
+</div>
+
 <div><label>Google Drive folder</label><input id="google_drive_folder" type="text" value="eisy Backups"></div>
 </div>
 <button onclick="saveConfig()">Save settings</button>
@@ -1058,18 +1090,49 @@ async function loadGoogleConnection(){
  }
 }
 
+async function loadUsbDevices(){
+ const select=document.getElementById('usb_device');
+ if(!select)return;
+ const previous=select.value;
+ select.replaceChildren(new Option('Loading USB drives...', ''));
+ try{
+  const r=await apiFetch('/api/usb/devices');
+  if(!r.ok)throw new Error('USB discovery failed');
+  const data=await r.json();
+  select.replaceChildren(new Option('Select USB drive', ''));
+  for(const device of data.devices){
+   const label=`${device.partition} — ${device.size_mb} MB`;
+   select.add(new Option(label,device.partition));
+  }
+  if([...select.options].some(o=>o.value===previous))
+   select.value=previous;
+  if(!data.devices.length)
+   select.options[0].text='No USB drives detected';
+ }catch(e){
+  select.replaceChildren(new Option('Unable to detect USB drives', ''));
+ }
+}
+
 async function loadConfig(){
+ await loadUsbDevices();
  try{
   const r=await apiFetch('/api/config');if(!r.ok)return;
   const c=await r.json();
-  for(const key of ['google_drive_folder'])
-   document.getElementById(key).value=c[key];
+  document.getElementById('google_drive_folder').value=c.google_drive_folder;
+  document.getElementById('usb_enabled').checked=!!c.usb_enabled;
+  document.getElementById('usb_retention').value=c.usb_retention;
+  const usbSelect=document.getElementById('usb_device');
+  if([...usbSelect.options].some(o=>o.value===c.usb_device))
+   usbSelect.value=c.usb_device;
  }catch(e){}
 }
 
 async function saveConfig(){
  const c={
-  google_drive_folder:document.getElementById('google_drive_folder').value.trim()||'eisy Backups'
+  google_drive_folder:document.getElementById('google_drive_folder').value.trim()||'eisy Backups',
+  usb_enabled:document.getElementById('usb_enabled').checked,
+  usb_device:document.getElementById('usb_device').value,
+  usb_retention:Number(document.getElementById('usb_retention').value)
  };
  try{
   const r=await apiFetch('/api/config',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(c)});
