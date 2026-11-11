@@ -10,12 +10,14 @@ from pathlib import Path
 
 import udi_interface
 from backup import Controller
+from backup_oauth import BackupOAuth, install_oauth_log_filter
 
 LOGGER = udi_interface.LOGGER
 BASE = Path(__file__).resolve().parent
 
 web_server = None
 web_thread = None
+google_oauth = None
 
 
 def load_config_doc(polyglot):
@@ -45,8 +47,9 @@ def start_web_server(plugin_token=None):
         return
 
     import uvicorn
-    from web_server import app, set_eisy_ui_token
+    from web_server import app, set_eisy_ui_token, set_google_oauth
     set_eisy_ui_token(plugin_token)
+    set_google_oauth(google_oauth)
 
     certificates = list(BASE.glob("plugin_*.cert"))
     if len(certificates) != 1:
@@ -63,7 +66,7 @@ def start_web_server(plugin_token=None):
     config = uvicorn.Config(
         app,
         host="0.0.0.0",
-        port=8768,
+        port=8769,
         ssl_certfile=str(cert),
         ssl_keyfile=str(key),
         access_log=False,
@@ -98,6 +101,8 @@ def handle_sigterm(signum, frame):
     try:
         stop_web_server()
     finally:
+        if google_oauth is not None:
+            google_oauth.shutdown()
         os._exit(0)
 
 
@@ -115,6 +120,16 @@ if __name__ == "__main__":
         load_config_doc(polyglot)
 
         polyglot.updateProfile()
+
+        install_oauth_log_filter()
+        google_oauth = BackupOAuth(polyglot)
+
+        polyglot.subscribe(
+            polyglot.CUSTOMNS, google_oauth.customNsHandler
+        )
+        polyglot.subscribe(
+            polyglot.OAUTH, google_oauth.oauthHandler
+        )
 
         polyglot.ready()
         Controller(polyglot)
@@ -147,3 +162,5 @@ if __name__ == "__main__":
 
     finally:
         stop_web_server()
+        if google_oauth is not None:
+            google_oauth.shutdown()

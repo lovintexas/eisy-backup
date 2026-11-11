@@ -101,7 +101,8 @@ def save_history(history, directory):
 
 
 def create_backup(directory=DEFAULT_BACKUP_DIRECTORY, retention=7, token=None,
-                  google_auth_directory=None, google_folder="eisy Backups"):
+                  google_auth_directory=None, google_folder="eisy Backups",
+                  oauth_provider=None):
     """Create, verify, upload, and remove a temporary native backup ZIP."""
     import google_drive
     if not BACKUP_LOCK.acquire(blocking=False):
@@ -119,12 +120,19 @@ def create_backup(directory=DEFAULT_BACKUP_DIRECTORY, retention=7, token=None,
     conn = None
     uploaded = False
     try:
-        if google_auth_directory is None:
-            raise RuntimeError("Google Drive authorization directory unavailable")
-        auth_dir = Path(google_auth_directory)
-        client_id, client_secret = google_drive.load_client_credentials()
-        # Fail before creating a native backup if authorization has expired.
-        access_token = google_drive.refresh_access_token(client_id, client_secret, auth_dir)
+        # Verify Google authorization before creating the native backup.
+        if oauth_provider is not None:
+            access_token = oauth_provider.getAccessToken()
+            if not access_token:
+                raise RuntimeError("PG3x Google OAuth access token unavailable")
+        else:
+            if google_auth_directory is None:
+                raise RuntimeError("Google Drive authorization directory unavailable")
+            auth_dir = Path(google_auth_directory)
+            client_id, client_secret = google_drive.load_client_credentials()
+            access_token = google_drive.refresh_access_token(
+                client_id, client_secret, auth_dir
+            )
         destination.mkdir(mode=0o700, parents=True, exist_ok=True)
         destination.chmod(0o700)
         if HISTORY_FILE.exists():

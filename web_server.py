@@ -31,6 +31,22 @@ LOGGER = logging.getLogger("eisy-backup-web")
 app = FastAPI(title="eisy Backup")
 
 EISY_UI_TOKEN = None
+GOOGLE_OAUTH = None
+
+
+def set_google_oauth(oauth):
+    global GOOGLE_OAUTH
+    GOOGLE_OAUTH = oauth
+
+
+def google_oauth_available():
+    """Check whether PG3x has supplied valid Google OAuth credentials."""
+    if GOOGLE_OAUTH is None:
+        return False
+    try:
+        return bool(GOOGLE_OAUTH.getAccessToken())
+    except (ValueError, KeyError):
+        return False
 
 
 def set_eisy_ui_token(token):
@@ -59,6 +75,7 @@ recovery_lock = threading.Lock()
 DEFAULT_CONFIG = {
     "retention": 7,
     "google_drive_folder": "eisy Backups",
+    "google_auth_mode": "legacy",
     "usb_enabled": False,
     "usb_device": "",
     "usb_volume_id": "",
@@ -207,7 +224,12 @@ def backup_worker():
             retention=config["retention"],
             token=EISY_UI_TOKEN,
             google_auth_directory=GOOGLE_AUTH_DIRECTORY,
-            google_folder=config["google_drive_folder"]
+            google_folder=config["google_drive_folder"],
+            oauth_provider=(
+                GOOGLE_OAUTH
+                if config["google_auth_mode"] == "pg3x"
+                else None
+            )
         )
 
         # USB copying is optional and independent of Google Drive success.
@@ -1888,7 +1910,7 @@ if __name__ == "__main__":
     uvicorn.run(
         app,
         host="0.0.0.0",
-        port=8768,
+        port=8769,
         ssl_certfile=str(cert),
         ssl_keyfile=str(key),
         access_log=False
