@@ -15,36 +15,42 @@ footer{text-align:center;color:var(--muted);font-size:.85rem;padding:0 20px 30px
 </style></head><body>
 <header><div class="wrap"><span class="pill">VERSION 1.3.0</span><h1>eisy Backup</h1><p>Configuration, Google Drive, USB, and NAS backup guide</p></div></header>
 <main class="wrap">
-<section class="card critical"><h2>Important: Enable Unrestricted ISY Access</h2>
-<p><strong>Before creating your first backup, enable “Allow Unrestricted ISY Access” for the eisy Backup plugin in PG3x.</strong> The plugin requires this permission to request native system backups from IoX.</p>
-<ol><li>Open the PG3x plugin dashboard on your eisy.</li><li>Select <strong>eisy Backup</strong> and open its configuration/settings.</li><li>Enable <strong>Allow Unrestricted ISY Access</strong>.</li><li>Save the setting and restart the plugin if prompted.</li></ol>
-<p><strong>If this setting is disabled, backup creation may fail even when the web interface and Google Drive connection appear to work.</strong></p></section>
-<section class="card"><h2><span class="step">1</span> Open the secure configuration page</h2>
-<p>In a browser on your local network, visit <code>https://EISY-IP:8768</code>, replacing <code>EISY-IP</code> with the IP address of your eisy.</p>
-<p class="muted">The configuration interface uses HTTPS. If your browser warns about a locally issued certificate, verify that you are connecting to your own eisy before proceeding.</p></section>
-<section class="card"><h2><span class="step">2</span> Create your administrator password</h2>
-<ol><li>On first access, enter and confirm a new administrator password.</li><li>Use username <code>admin</code> and that password for future logins.</li><li>Keep the password secure. The interface also provides password change and recovery options.</li></ol></section>
-<section class="card"><h2><span class="step">3</span> Connect Google Drive (optional)</h2>
-<p>Local and USB backups do not require Google Drive authentication.</p>
-<ol>
-<li>Open the <strong>eisy Backup</strong> plugin dashboard in PG3x.</li>
-<li>Click <strong>Authenticate</strong> and authorize your Google account.</li>
-<li>In the IoX Admin Console, select the eisy Backup controller and enable <strong>Google Drive Backup</strong>.</li>
-<li>Return to the plugin web interface to verify Google authentication status.</li>
-</ol>
-<p>The plugin requests the limited Google Drive <code>drive.file</code> permission. Your Google password is entered only on Google's authorization page.</p>
-</section>
-<section class="card"><h2><span class="step">4</span> Set the backup folder</h2>
-<ol><li>Under <strong>Backup settings</strong>, enter your preferred <strong>Google Drive folder</strong> name.</li><li>Select <strong>Save settings</strong>.</li></ol>
-<p><strong>Important:</strong> Each eisy must use a different
-Google Drive folder. If two systems use the same folder, the backup
-retention policy on either system may delete backups created by the
-other system.</p>
 
-<p>The default folder name is <code>eisy Backups</code>.</p></section>
-<section class="card"><h2><span class="step">5</span> Create and verify a backup</h2>
-<ol><li>Click <strong>Backup Now</strong>.</li><li>Wait for the operation to finish.</li><li>Check <strong>Backup history</strong> for the result.</li><li>Confirm the archive is present in your Google Drive folder.</li><li>Optionally check the last backup status in the IoX Admin Console.</li></ol>
-<p>Backups can be initiated on demand or configured to run automatically using the scheduling settings in the web interface.</p></section>
+<section class="card">
+<h2>Quick Start — Google Drive Backups</h2>
+<p><strong>If you only want automatic backups to Google Drive, you do not need to open or configure the HTML web editor.</strong> Google Drive authentication and routine backup settings are managed through PG3x and IoX.</p>
+<ol>
+<li>Install <strong>eisy Backup</strong> from the PG3x Store.</li>
+<li>Open the plugin's <strong>Overview</strong> page, click <strong>Authenticate</strong>, and authorize access to your Google account.</li>
+<li>Open the plugin's <strong>Configuration</strong> page, enable <strong>Allow API Access</strong>, and click <strong>Save</strong>.</li>
+<li><strong>Restart</strong> the plugin.</li>
+<li>Open the <strong>IoX Admin Console</strong>, select the eisy Backup controller, and enable <strong>Google Drive Backup</strong>.</li>
+<li>Configure your backup schedule and the number of backups to retain using the available IoX settings.</li>
+<li>Run a test backup and confirm that the archive appears in Google Drive.</li>
+</ol>
+<p>No Google Cloud developer account, OAuth client ID, client secret, or HTML editor setup is required.</p>
+<p>The plugin uses Google's <code>drive.file</code> permission. Your Google password is entered only on Google's authorization page.</p>
+<h3>If IoX still shows the old node profile</h3>
+<p>In the IoX Admin Console, right-click the eisy Backup node server and select <strong>Upload Profile</strong> (or the equivalent profile-upload command). Restart the Admin Console afterward if necessary.</p>
+</section>
+
+<section class="card">
+<h2>Optional — HTML Configuration and Backup Management</h2>
+<p>The HTML editor is <strong>not required for Google Drive-only backups</strong>. Use it if you want additional backup management, configuration, history, or download features.</p>
+<h3>Open the secure configuration page</h3>
+<p>From a browser on your local network, visit <code>https://EISY-IP:8768</code>, replacing <code>EISY-IP</code> with your eisy's IP address.</p>
+<p class="muted">The interface uses HTTPS. If your browser warns about a locally issued certificate, verify that you are connecting to your own eisy.</p>
+<h3>Create your administrator password</h3>
+<ol>
+<li>On first access, enter and confirm a new administrator password.</li>
+<li>Use username <code>admin</code> and that password for subsequent logins.</li>
+</ol>
+<h3>Google Drive folder</h3>
+<p>The default Google Drive folder is <code>eisy Backups</code>. You can change the folder name in the HTML configuration interface if needed.</p>
+<p><strong>Important:</strong> If you have multiple eisy systems using the same Google account, configure a different folder for each installation. Otherwise, one system's retention policy could delete backups belonging to another.</p>
+<h3>Backup history and downloads</h3>
+<p>Use the HTML interface to review backup history, initiate backups, and download locally available backup archives.</p>
+</section>
 
 <section class="card">
 <h2>USB Backup — Version 1.2.0</h2>
