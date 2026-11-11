@@ -24,4 +24,13 @@
   <editor id="USBBackupResult">
     <range uom="25" subset="0,1,2,3" nls="USBRESULT" />
   </editor>
+  <editor id="GoogleBoolean">
+    <range uom="25" subset="0,1" nls="GOOGLEBOOLEAN" />
+  </editor>
+  <editor id="GoogleAuthStatus">
+    <range uom="25" subset="0,1" nls="GOOGLEAUTH" />
+  </editor>
+  <editor id="GoogleBackupResult">
+    <range uom="25" subset="0,1,2,3" nls="GOOGLERESULT" />
+  </editor>
 </editors>

@@ -6,6 +6,9 @@
       <st id="GV1" editor="BackupRetention" />
       <st id="GV2" editor="BackupTimestamp" />
       <st id="GV3" editor="BackupResult" />
+      <st id="GV4" editor="GoogleBoolean" />
+      <st id="GV5" editor="GoogleAuthStatus" />
+      <st id="GV6" editor="GoogleBackupResult" />
     </sts>
     <cmds>
       <sends />
@@ -14,6 +17,9 @@
         <cmd id="QUERY" />
         <cmd id="SET_RETENTION">
           <p id="" editor="BackupRetention" />
+        </cmd>
+        <cmd id="SET_GOOGLE">
+          <p id="" editor="GoogleBoolean" />
         </cmd>
       </accepts>
     </cmds>

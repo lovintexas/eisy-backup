@@ -36,3 +36,16 @@ USBRESULT-0 = Never Run
 USBRESULT-1 = Success
 USBRESULT-2 = Failed
 USBRESULT-3 = Disabled
+
+ST-controller-GV4-NAME = Google Drive Backup Enabled
+ST-controller-GV5-NAME = Google Authentication
+ST-controller-GV6-NAME = Last Google Backup Result
+CMD-controller-SET_GOOGLE-NAME = Set Google Backup
+GOOGLEBOOLEAN-0 = Disabled
+GOOGLEBOOLEAN-1 = Enabled
+GOOGLEAUTH-0 = Not Connected
+GOOGLEAUTH-1 = Connected
+GOOGLERESULT-0 = Never Run
+GOOGLERESULT-1 = Success
+GOOGLERESULT-2 = Failed
+GOOGLERESULT-3 = Skipped

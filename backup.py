@@ -9,7 +9,10 @@ class Controller(udi_interface.Node):
         {'driver': 'ST', 'value': 0, 'uom': 25, 'name': 'Backup Status'},
         {'driver': 'GV1', 'value': 7, 'uom': 56, 'name': 'Google Drive Backups to Retain'},
         {'driver': 'GV2', 'value': 0, 'uom': 151, 'name': 'Last Backup'},
-        {'driver': 'GV3', 'value': 0, 'uom': 25, 'name': 'Last Backup Result'}
+        {'driver': 'GV3', 'value': 0, 'uom': 25, 'name': 'Last Backup Result'},
+        {'driver': 'GV4', 'value': 0, 'uom': 25, 'name': 'Google Drive Backup Enabled'},
+        {'driver': 'GV5', 'value': 0, 'uom': 25, 'name': 'Google Authentication'},
+        {'driver': 'GV6', 'value': 0, 'uom': 25, 'name': 'Last Google Backup Result'}
     ]
 
     def __init__(self, polyglot):
@@ -34,20 +37,13 @@ class Controller(udi_interface.Node):
     def start(self):
         LOGGER.info("eisy Backup controller started")
         import web_server
-        import google_drive
-
-        try:
-            tokens = google_drive.load_tokens(
-                web_server.GOOGLE_AUTH_DIRECTORY
-            ) or {}
-            status = 1 if tokens.get("refresh_token") else 0
-        except Exception:
-            LOGGER.exception("Unable to check Google Drive authorization")
-            status = 3
-
-        self.setDriver('ST', status)
-        self.setDriver('GV1', web_server.load_config()['retention'])
+        config = web_server.load_config()
+        self.setDriver('ST', 1)
+        self.setDriver('GV1', config['retention'])
+        self.setDriver('GV4', int(config.get('google_drive_enabled', False)))
+        self.setDriver('GV5', int(web_server.google_oauth_available()))
         self.update_backup_history()
+        self.update_google_status()
         self.usb_node.check_usb()
         self.usb_node.update_backup_result()
 
@@ -94,9 +90,50 @@ class Controller(udi_interface.Node):
         self.setDriver('ST', value)
         if value in (1, 3):
             self.update_backup_history()
+            self.update_google_status()
+
+    def update_google_status(self):
+        import web_server
+        from backup_engine import get_history
+
+        config = web_server.load_config()
+        self.setDriver('GV4', int(config.get('google_drive_enabled', False)))
+        self.setDriver('GV5', int(web_server.google_oauth_available()))
+
+        history = get_history()
+        result = history[0].get('google_drive') if history else None
+        values = {
+            'Uploaded': 1,
+            'Failed': 2,
+            'Upload unverified': 2,
+            'Skipped': 3,
+            'Disabled': 3,
+            'Not authenticated': 3,
+        }
+        self.setDriver('GV6', values.get(result, 0))
+
+    def set_google(self, command):
+        import web_server
+
+        value = int(command['value'])
+        if value not in (0, 1):
+            LOGGER.warning("Invalid Google backup setting: %s", value)
+            return
+
+        config = web_server.load_config()
+        config['google_drive_enabled'] = bool(value)
+        web_server.save_config(config)
+        self.update_google_status()
+        LOGGER.info("Google Drive backup %s",
+                    "enabled" if value else "disabled")
 
     def query(self, command=None):
+        self.update_backup_history()
+        self.update_google_status()
+        self.usb_node.check_usb()
+        self.usb_node.update_backup_result()
         self.reportDrivers()
+        self.usb_node.reportDrivers()
 
     def backup_now(self, command=None):
         import web_server
@@ -124,5 +161,6 @@ class Controller(udi_interface.Node):
     commands = {
         'QUERY': query,
         'BACKUP': backup_now,
-        'SET_RETENTION': set_retention
+        'SET_RETENTION': set_retention,
+        'SET_GOOGLE': set_google
     }

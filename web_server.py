@@ -76,6 +76,7 @@ DEFAULT_CONFIG = {
     "retention": 7,
     "google_drive_folder": "eisy Backups",
     "google_auth_mode": "pg3x",
+    "google_drive_enabled": False,
     "usb_enabled": False,
     "usb_device": "",
     "usb_volume_id": "",
@@ -229,7 +230,8 @@ def backup_worker():
                 GOOGLE_OAUTH
                 if config["google_auth_mode"] == "pg3x"
                 else None
-            )
+            ),
+            google_enabled=config.get("google_drive_enabled", False)
         )
 
         # USB copying is optional and independent of Google Drive success.
@@ -598,7 +600,7 @@ def get_config(auth=Depends(authenticated)):
 @app.post("/api/config")
 def update_config(data: ConfigUpdate, auth=Depends(authenticated)):
     config = load_config()
-    updated = {**config, **data.model_dump()}
+    updated = {**config, **data.model_dump(exclude_unset=True)}
 
     if updated.get("usb_enabled"):
         from usb_backup import verify_mount
@@ -617,13 +619,6 @@ def update_config(data: ConfigUpdate, auth=Depends(authenticated)):
 
 def start_backup_job():
     """Start a backup from either IoX or the web interface."""
-    if not (
-        google_oauth_available()
-        if load_config().get("google_auth_mode") == "pg3x"
-        else bool((google_drive.load_tokens(GOOGLE_AUTH_DIRECTORY) or {}).get("refresh_token"))
-    ):
-        raise RuntimeError("Connect Google Drive before backing up")
-
     with state_lock:
         if backup_state["running"]:
             raise RuntimeError("Backup already running")
@@ -641,12 +636,6 @@ def start_backup_job():
 
 @app.post("/api/backup")
 def start_backup(auth=Depends(authenticated)):
-    if not (
-        google_oauth_available()
-        if load_config().get("google_auth_mode") == "pg3x"
-        else bool((google_drive.load_tokens(GOOGLE_AUTH_DIRECTORY) or {}).get("refresh_token"))
-    ):
-        raise HTTPException(409, "Connect Google Drive before backing up")
     try:
         start_backup_job()
     except RuntimeError as exc:

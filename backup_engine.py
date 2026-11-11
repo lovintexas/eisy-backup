@@ -102,8 +102,8 @@ def save_history(history, directory):
 
 def create_backup(directory=DEFAULT_BACKUP_DIRECTORY, retention=7, token=None,
                   google_auth_directory=None, google_folder="eisy Backups",
-                  oauth_provider=None):
-    """Create, verify, upload, and remove a temporary native backup ZIP."""
+                  oauth_provider=None, google_enabled=False):
+    """Create and verify a local backup, optionally uploading to Google Drive."""
     import google_drive
     if not BACKUP_LOCK.acquire(blocking=False):
         raise RuntimeError("A backup is already running")
@@ -113,26 +113,14 @@ def create_backup(directory=DEFAULT_BACKUP_DIRECTORY, retention=7, token=None,
     record = {"filename": filename, "date": timestamp.isoformat(),
               "started": timestamp.isoformat(), "completed": None,
               "size": 0, "path": None, "status": "running",
-              "successful": False, "error": None, "google_drive": "Pending"}
+              "successful": False, "error": None,
+              "google_drive": "Pending" if google_enabled else "Disabled"}
     history = []
     partial = destination / (filename + ".part")
     archive_path = destination / filename
     conn = None
     uploaded = False
     try:
-        # Verify Google authorization before creating the native backup.
-        if oauth_provider is not None:
-            access_token = oauth_provider.getAccessToken()
-            if not access_token:
-                raise RuntimeError("PG3x Google OAuth access token unavailable")
-        else:
-            if google_auth_directory is None:
-                raise RuntimeError("Google Drive authorization directory unavailable")
-            auth_dir = Path(google_auth_directory)
-            client_id, client_secret = google_drive.load_client_credentials()
-            access_token = google_drive.refresh_access_token(
-                client_id, client_secret, auth_dir
-            )
         destination.mkdir(mode=0o700, parents=True, exist_ok=True)
         destination.chmod(0o700)
         if HISTORY_FILE.exists():
@@ -165,30 +153,58 @@ def create_backup(directory=DEFAULT_BACKUP_DIRECTORY, retention=7, token=None,
                 raise RuntimeError(f"ZIP integrity failure: {bad_file}")
         partial.replace(archive_path)
         record["size"] = archive_path.stat().st_size
-        folder_id = google_drive.ensure_backup_folder(access_token, google_folder)
-        cloud_file = google_drive.upload_backup(archive_path, access_token, folder_id)
-        uploaded = True
-        record.update({"status": "successful", "successful": True,
-                       "completed": datetime.now().astimezone().isoformat(),
-                       "metadata": metadata, "google_drive": "Uploaded",
-                       "google_file_id": cloud_file["id"], "error": None})
+        record.update({
+            "status": "successful",
+            "successful": True,
+            "completed": datetime.now().astimezone().isoformat(),
+            "metadata": metadata,
+            "error": None,
+        })
+
+        if google_enabled:
+            access_token = None
+            try:
+                if oauth_provider is not None:
+                    access_token = oauth_provider.getAccessToken()
+
+                if not access_token:
+                    record["google_drive"] = "Skipped"
+                    LOGGER.warning(
+                        "Google Drive upload skipped: PG3x authentication unavailable"
+                    )
+                else:
+                    folder_id = google_drive.ensure_backup_folder(
+                        access_token, google_folder
+                    )
+                    cloud_file = google_drive.upload_backup(
+                        archive_path, access_token, folder_id
+                    )
+                    uploaded = True
+                    record["google_drive"] = "Uploaded"
+                    record["google_file_id"] = cloud_file["id"]
+
+                    try:
+                        google_drive.enforce_retention(
+                            access_token, folder_id, retention
+                        )
+                    except Exception as exc:
+                        LOGGER.exception("Google Drive retention failed")
+                        record["retention_warning"] = str(exc)
+
+            except Exception as exc:
+                LOGGER.exception("Google Drive upload failed")
+                record["google_drive"] = "Failed"
+                record["google_error"] = str(exc)
+
         history[0] = record.copy()
         save_history(history[:100], destination)
-        # Retention failure is a warning, not a failed backup: upload is verified.
-        try:
-            google_drive.enforce_retention(access_token, folder_id, retention)
-        except Exception as exc:
-            LOGGER.exception("Google Drive retention failed")
-            record["retention_warning"] = str(exc)
-            history[0] = record.copy()
-            save_history(history[:100], destination)
         return record
     except Exception as exc:
         LOGGER.exception("Backup/upload failed")
         record.update({"status": "failed", "successful": False,
                        "completed": datetime.now().astimezone().isoformat(),
                        "error": str(exc),
-                       "google_drive": "Upload unverified" if not uploaded else "Uploaded"})
+                       "google_drive": record.get("google_drive", "Disabled")})
         if history:
             history[0] = record.copy()
         else:
