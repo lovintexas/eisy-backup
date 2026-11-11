@@ -2,6 +2,12 @@
 
 ## 1.2.0 — USB Backup Support
 
+- Added USB Backup Storage listing and direct ZIP downloads in the web interface.
+- Added safe USB unmount and unregister operations.
+- Added restricted privileged helper for USB mount management.
+- Added automatic mounting of the registered USB drive at system startup.
+- Added documentation for USB registration and reinstall requirements.
+
 - Added automatic USB backup copying after successful native eisy backups.
 - Added USB device selection, enable/disable control, and independent USB retention settings.
 - Added ZIP integrity verification before and after copying to USB storage.

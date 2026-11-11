@@ -20,6 +20,16 @@ eisy Backup provides on-demand and scheduled native backups, Google Drive integr
 
 ## Installation
 
+**Important:** After a fresh installation or uninstall/reinstall, enable
+**Allow Unrestricted ISY Access by Node Server** in the plugin's PG3x
+configuration and restart the plugin. This authorization is required to
+create native eisy backups.
+
+If the plugin is uninstalled and reinstalled, an existing USB mount may
+retain permissions associated with the previous plugin user. If USB storage
+reports a permission error, safely unmount and remount the registered drive
+using the installed USB control helper, then verify access.
+
 1. Install eisy Backup from the Universal Devices plugin store.
 2. Enable Allow Unrestricted ISY Access when required.
 3. Open the plugin's HTTPS web interface at `https://EISY-IP:8768`, replacing `EISY-IP` with your eisy's IP address.
