@@ -174,38 +174,162 @@ def ensure_backup_folder(access_token, folder_name="eisy Backups"):
 
 
 def upload_backup(path, access_token, folder_id):
-    """Upload a ZIP, then independently verify its size and MD5 in Drive."""
+    """Upload a ZIP in resumable chunks and verify its size and MD5."""
     import hashlib
+    import logging
+    import time
     from pathlib import Path
+
+    from requests.exceptions import ConnectionError, Timeout, SSLError
+
+    log = logging.getLogger("eisy-backup-google")
     path = Path(path)
     size = path.stat().st_size
     digest = hashlib.md5()
+
     with path.open("rb") as source:
         for block in iter(lambda: source.read(1024 * 1024), b""):
             digest.update(block)
-    metadata = {"name": path.name, "parents": [folder_id], "mimeType": "application/zip"}
-    response = _drive_request("POST", DRIVE_UPLOAD_API, access_token,
-                              params={"uploadType": "resumable", "fields": "id,name,size,md5Checksum"},
-                              headers={"X-Upload-Content-Type": "application/zip",
-                                       "X-Upload-Content-Length": str(size)}, json=metadata)
+
+    metadata = {
+        "name": path.name,
+        "parents": [folder_id],
+        "mimeType": "application/zip",
+    }
+    response = _drive_request(
+        "POST", DRIVE_UPLOAD_API, access_token,
+        params={"uploadType": "resumable",
+                "fields": "id,name,size,md5Checksum"},
+        headers={
+            "X-Upload-Content-Type": "application/zip",
+            "X-Upload-Content-Length": str(size),
+        },
+        json=metadata,
+    )
     upload_url = response.headers.get("Location")
-    if not upload_url or not upload_url.startswith("https://www.googleapis.com/"):
+    if not upload_url or not upload_url.startswith(
+            "https://www.googleapis.com/"):
         raise RuntimeError("Google did not return a valid upload URL")
-    # The file handle streams the ZIP without loading it into RAM.
+
+    headers = {"Authorization": f"Bearer {access_token}"}
+    chunk_size = 8 * 1024 * 1024
+    retry_codes = {408, 429, 500, 502, 503, 504}
+
+    def query_progress():
+        response = requests.put(
+            upload_url,
+            headers={**headers,
+                     "Content-Length": "0",
+                     "Content-Range": f"bytes */{size}"},
+            timeout=90,
+        )
+        return response
+
+    offset = 0
+    failures = 0
+    result = None
+
     with path.open("rb") as source:
-        response = requests.put(upload_url, data=source, timeout=900,
-                                headers={"Content-Type": "application/zip", "Content-Length": str(size)})
-    if not response.ok:
-        raise RuntimeError(f"Google upload failed (HTTP {response.status_code}): {response.text[:500]}")
-    file_id = response.json().get("id")
+        while offset < size:
+            source.seek(offset)
+            data = source.read(min(chunk_size, size - offset))
+            end_byte = offset + len(data) - 1
+
+            try:
+                response = requests.put(
+                    upload_url,
+                    data=data,
+                    headers={
+                        **headers,
+                        "Content-Type": "application/zip",
+                        "Content-Length": str(len(data)),
+                        "Content-Range":
+                            f"bytes {offset}-{end_byte}/{size}",
+                    },
+                    timeout=180,
+                )
+            except (SSLError, ConnectionError, Timeout):
+                response = None
+
+            if response is not None and response.status_code in (200, 201):
+                result = response.json()
+                offset = size
+                break
+
+            if response is not None and response.status_code == 308:
+                acknowledged = response.headers.get("Range")
+                new_offset = (
+                    int(acknowledged.rsplit("-", 1)[1]) + 1
+                    if acknowledged else 0
+                )
+                if new_offset > offset:
+                    failures = 0
+                else:
+                    failures += 1
+                    if failures > 6:
+                        raise RuntimeError("Google upload stalled")
+                offset = new_offset
+                log.info("Google upload progress: %d/%d bytes",
+                         offset, size)
+                continue
+
+            if (response is not None
+                    and response.status_code not in retry_codes):
+                raise RuntimeError(
+                    f"Google upload failed (HTTP {response.status_code})")
+
+            failures += 1
+            if failures > 6:
+                raise RuntimeError(
+                    "Google upload failed after six recovery attempts")
+
+            time.sleep(min(2 ** failures, 30))
+
+            try:
+                status = query_progress()
+            except (SSLError, ConnectionError, Timeout):
+                continue
+
+            if status.status_code in (200, 201):
+                result = status.json()
+                offset = size
+                break
+
+            if status.status_code == 308:
+                previous_offset = offset
+                acknowledged = status.headers.get("Range")
+                offset = (
+                    int(acknowledged.rsplit("-", 1)[1]) + 1
+                    if acknowledged else 0
+                )
+                log.info("Google upload resumed at byte %d", offset)
+                if offset > previous_offset:
+                    failures = 0
+                continue
+
+            if status.status_code not in retry_codes:
+                raise RuntimeError(
+                    f"Google upload recovery failed (HTTP {status.status_code})")
+
+    if not result:
+        raise RuntimeError("Google upload did not return a completed file")
+
+    file_id = result.get("id")
     if not file_id:
         raise RuntimeError("Google upload response omitted file ID")
-    remote = _drive_request("GET", f"{DRIVE_API}/{file_id}", access_token,
-                            params={"fields": "id,name,size,md5Checksum,trashed"}).json()
-    if (remote.get("trashed") or remote.get("name") != path.name
+
+    remote = _drive_request(
+        "GET", f"{DRIVE_API}/{file_id}", access_token,
+        params={"fields": "id,name,size,md5Checksum,trashed"},
+    ).json()
+
+    if (remote.get("trashed")
+            or remote.get("name") != path.name
             or int(remote.get("size", -1)) != size
             or remote.get("md5Checksum", "").lower() != digest.hexdigest()):
         raise RuntimeError("Google Drive upload verification failed")
+
+    log.info("Google upload verified: %d bytes", size)
     return {"id": file_id, "size": size, "md5": digest.hexdigest()}
 
 
