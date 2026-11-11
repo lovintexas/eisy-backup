@@ -13,20 +13,27 @@ code{background:#eaf0f8;border-radius:5px;padding:3px 6px;overflow-wrap:anywhere
 .muted{color:var(--muted)}.pill{display:inline-block;background:#e6f2ff;color:#174b82;border-radius:50px;padding:4px 11px;font-weight:650;font-size:.8rem;margin-bottom:12px}
 footer{text-align:center;color:var(--muted);font-size:.85rem;padding:0 20px 30px}@media(max-width:600px){header{padding:35px 20px}.card{padding:21px}}
 </style></head><body>
-<header><div class="wrap"><span class="pill">VERSION 1.2.0</span><h1>eisy Backup</h1><p>Configuration, Google Drive, USB, and NAS backup guide</p></div></header>
+<header><div class="wrap"><span class="pill">VERSION 1.3.0</span><h1>eisy Backup</h1><p>Configuration, Google Drive, USB, and NAS backup guide</p></div></header>
 <main class="wrap">
 <section class="card critical"><h2>Important: Enable Unrestricted ISY Access</h2>
 <p><strong>Before creating your first backup, enable “Allow Unrestricted ISY Access” for the eisy Backup plugin in PG3x.</strong> The plugin requires this permission to request native system backups from IoX.</p>
 <ol><li>Open the PG3x plugin dashboard on your eisy.</li><li>Select <strong>eisy Backup</strong> and open its configuration/settings.</li><li>Enable <strong>Allow Unrestricted ISY Access</strong>.</li><li>Save the setting and restart the plugin if prompted.</li></ol>
 <p><strong>If this setting is disabled, backup creation may fail even when the web interface and Google Drive connection appear to work.</strong></p></section>
 <section class="card"><h2><span class="step">1</span> Open the secure configuration page</h2>
-<p>In a browser on your local network, visit <code>https://EISY-IP:8769</code>, replacing <code>EISY-IP</code> with the IP address of your eisy.</p>
+<p>In a browser on your local network, visit <code>https://EISY-IP:8768</code>, replacing <code>EISY-IP</code> with the IP address of your eisy.</p>
 <p class="muted">The configuration interface uses HTTPS. If your browser warns about a locally issued certificate, verify that you are connecting to your own eisy before proceeding.</p></section>
 <section class="card"><h2><span class="step">2</span> Create your administrator password</h2>
 <ol><li>On first access, enter and confirm a new administrator password.</li><li>Use username <code>admin</code> and that password for future logins.</li><li>Keep the password secure. The interface also provides password change and recovery options.</li></ol></section>
-<section class="card"><h2><span class="step">3</span> Connect Google Drive</h2>
-<ol><li>In the <strong>Google Drive</strong> section, select <strong>Connect Google Drive</strong>.</li><li>Open the Google authorization link shown on the page.</li><li>Enter the displayed device verification code.</li><li>Sign in to the Google account where you want backups stored and approve the requested permissions.</li><li>Return to the plugin page and confirm that Google Drive reports connected.</li></ol>
-<p>The plugin requests the limited Google Drive <code>drive.file</code> permission, rather than unrestricted access to your entire Drive. Your Google account password is entered only on Google's authorization page.</p></section>
+<section class="card"><h2><span class="step">3</span> Connect Google Drive (optional)</h2>
+<p>Local and USB backups do not require Google Drive authentication.</p>
+<ol>
+<li>Open the <strong>eisy Backup</strong> plugin dashboard in PG3x.</li>
+<li>Click <strong>Authenticate</strong> and authorize your Google account.</li>
+<li>In the IoX Admin Console, select the eisy Backup controller and enable <strong>Google Drive Backup</strong>.</li>
+<li>Return to the plugin web interface to verify Google authentication status.</li>
+</ol>
+<p>The plugin requests the limited Google Drive <code>drive.file</code> permission. Your Google password is entered only on Google's authorization page.</p>
+</section>
 <section class="card"><h2><span class="step">4</span> Set the backup folder</h2>
 <ol><li>Under <strong>Backup settings</strong>, enter your preferred <strong>Google Drive folder</strong> name.</li><li>Select <strong>Save settings</strong>.</li></ol>
 <p><strong>Important:</strong> Each eisy must use a different
@@ -139,9 +146,9 @@ away from the eisy device.</p>
 <p>To restore, download the desired ZIP and use the existing eisy-ui restore functionality. The plugin does not itself perform restores.</p></section>
 <section class="card"><h2>Troubleshooting</h2>
 <h3>Backup creation fails</h3><p>First verify <strong>Allow Unrestricted ISY Access</strong> is enabled for eisy Backup in PG3x. Then review the plugin status and logs.</p>
-<h3>Google Drive is not connected</h3><p>Return to the Google Drive section, reconnect, and complete the device authorization process. Verify internet connectivity.</p>
+<h3>Google Drive is not authenticated</h3><p>Open the eisy Backup dashboard in PG3x and click <strong>Authenticate</strong>. Complete Google authorization and verify internet connectivity. Enable Google Drive Backup in IoX if cloud backups are desired.</p>
 <h3>No Download button for an older backup</h3><p>The Download button appears only for successful archives still available locally. Retrieve older backups directly from Google Drive.</p>
-<h3>Cannot open the web interface</h3><p>Check that the plugin is running, use <code>https://</code> (not <code>http://</code>), and verify the eisy IP address and port <code>8769</code>.</p></section>
+<h3>Cannot open the web interface</h3><p>Check that the plugin is running, use <code>https://</code> (not <code>http://</code>), and verify the eisy IP address and port <code>8768</code>.</p></section>
 <section class="card"><h2>Security and privacy</h2><p>Backups may contain sensitive system configuration. Protect any downloaded ZIP files. Google authorization tokens are stored locally, and uploads go directly to your authorized Google Drive account.</p>
 <p>Read the <a href="https://github.com/lovintexas/eisy-backup/blob/main/PRIVACY.md">Privacy Policy</a> or visit the <a href="https://github.com/lovintexas/eisy-backup">GitHub repository</a>.</p></section>
 
@@ -150,12 +157,12 @@ away from the eisy device.</p>
 <p>Version 1.1.0 supports automated downloads of the latest
 successful local backup to a NAS or another computer.</p>
 <ol>
-<li>Open the backup plugin's HTTPS interface on port 8769.</li>
+<li>Open the backup plugin's HTTPS interface on port 8768.</li>
 <li>Sign in as administrator.</li>
 <li>Under <strong>NAS Backup Access</strong>, click
 <strong>Copy Token</strong>.</li>
 <li>Configure your NAS to download from:
-<code>https://EISY-IP:8769/api/backup/latest</code></li>
+<code>https://EISY-IP:8768/api/backup/latest</code></li>
 <li>Include the HTTP header:
 <code>Authorization: Bearer YOUR_TOKEN</code></li>
 </ol>

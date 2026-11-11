@@ -3,7 +3,7 @@
 **[Configuration Guide — setup, Google Drive authorization, and required API access](https://lovintexas.github.io/eisy-backup/)**
 
 
-**Version 1.2.0**
+**Version 1.3.0**
 
 ## Overview
 
@@ -38,13 +38,17 @@ using the installed USB control helper, then verify access.
 
 ## Google Drive Setup
 
-1. Select **Connect Google Drive** in the web interface.
-2. Follow the displayed Google authorization link.
-3. Enter the displayed verification code and approve the requested access.
-4. Return to the web interface and verify that Google Drive is connected.
+Google Drive is optional. Local and USB backups work without Google authentication.
+
+1. Open the eisy Backup plugin dashboard in PG3x.
+2. Click **Authenticate** and authorize your Google account.
+3. In the IoX Admin Console, select the eisy Backup controller and enable **Google Drive Backup**.
+4. Open the plugin's HTTPS web interface to verify Google authentication status.
 5. Optionally change the Google Drive backup folder and save settings.
 
-The plugin requests the Google Drive `drive.file` scope, which limits access to files created or managed by the application rather than unrestricted access to your entire Drive.
+The plugin requests the Google Drive `drive.file` scope, limiting access to files created or managed by the application.
+
+Google upload failures do not prevent successful local or USB backups.
 
 ## Creating a Backup
 
@@ -263,6 +267,16 @@ If two systems use the same folder, the backup retention policy on
 either system may delete backups created by the other system.
 
 ## Version History
+
+**1.3.0 — PG3x Google OAuth and optional cloud backups**
+
+- Google Drive authentication through the PG3x Authenticate button.
+- Google Drive backups can be enabled or disabled from IoX.
+- Local backups work independently of Google authentication.
+- Google upload failures do not prevent successful local or USB backups.
+- Google authentication and backup results are reported in IoX.
+- Removed the obsolete Google device-code authentication interface.
+
 
 **1.2.0 — USB backup support**
 

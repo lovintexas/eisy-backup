@@ -75,7 +75,6 @@ recovery_lock = threading.Lock()
 DEFAULT_CONFIG = {
     "retention": 7,
     "google_drive_folder": "eisy Backups",
-    "google_auth_mode": "pg3x",
     "google_drive_enabled": False,
     "usb_enabled": False,
     "usb_device": "",
@@ -226,11 +225,7 @@ def backup_worker():
             token=EISY_UI_TOKEN,
             google_auth_directory=GOOGLE_AUTH_DIRECTORY,
             google_folder=config["google_drive_folder"],
-            oauth_provider=(
-                GOOGLE_OAUTH
-                if config["google_auth_mode"] == "pg3x"
-                else None
-            ),
+            oauth_provider=GOOGLE_OAUTH,
             google_enabled=config.get("google_drive_enabled", False)
         )
 
@@ -643,98 +638,9 @@ def start_backup(auth=Depends(authenticated)):
     return {"success": True, "message": "Backup started"}
 
 
-google_auth_lock = threading.Lock()
-google_auth_state = {}
-
-
-@app.post("/api/google/start")
-def google_start(auth=Depends(authenticated)):
-    try:
-        client_id, client_secret = google_drive.load_client_credentials(GOOGLE_AUTH_DIRECTORY)
-        result = google_drive.start_device_authorization(client_id)
-
-        import time
-        with google_auth_lock:
-            google_auth_state.clear()
-            google_auth_state.update({
-                "device_code": result["device_code"],
-                "client_id": client_id,
-                "client_secret": client_secret,
-                "expires_at": time.monotonic() + result["expires_in"],
-                "interval": result.get("interval", 5),
-                "next_poll": time.monotonic() + result.get("interval", 5),
-                "status": "pending",
-            })
-
-        return {
-            "user_code": result["user_code"],
-            "verification_url": result["verification_url"],
-            "expires_in": result["expires_in"],
-            "interval": result.get("interval", 5),
-        }
-    except Exception as exc:
-        LOGGER.exception("Google authorization start failed")
-        raise HTTPException(502, str(exc))
-
-
 @app.get("/api/google/connection")
 def google_connection(auth=Depends(authenticated)):
-    tokens = google_drive.load_tokens(GOOGLE_AUTH_DIRECTORY)
-    return {
-        "connected": bool(tokens and tokens.get("refresh_token"))
-    }
-
-
-@app.get("/api/google/status")
-def google_status(auth=Depends(authenticated)):
-    import time
-
-    with google_auth_lock:
-        if not google_auth_state:
-            return {"status": "idle"}
-
-        if google_auth_state["status"] == "authorized":
-            return {"status": "authorized"}
-
-        if time.monotonic() >= google_auth_state["expires_at"]:
-            google_auth_state.clear()
-            return {"status": "expired"}
-
-        if time.monotonic() < google_auth_state["next_poll"]:
-            return {"status": "pending"}
-
-        google_auth_state["next_poll"] = (
-            time.monotonic() + google_auth_state["interval"]
-        )
-
-        try:
-            result = google_drive.poll_device_authorization(
-                google_auth_state["client_id"],
-                google_auth_state["client_secret"],
-                google_auth_state["device_code"],
-            )
-
-            status = result["status"]
-
-            if status == "authorized":
-                google_drive.save_tokens(result["tokens"], GOOGLE_AUTH_DIRECTORY)
-                google_auth_state.clear()
-                google_auth_state["status"] = "authorized"
-                return {"status": "authorized"}
-
-            if status == "slow_down":
-                google_auth_state["interval"] += 5
-
-            if status in ("access_denied", "expired_token"):
-                google_auth_state.clear()
-
-            return {"status": status}
-
-        except Exception:
-            LOGGER.exception("Google authorization polling failed")
-            return {"status": "error"}
-
-
+    return {"connected": google_oauth_available()}
 
 
 @app.get("/api/nas/token")
@@ -1223,15 +1129,10 @@ Enable USB backups
 
 <div class="card">
 <h2>Google Drive</h2>
-<div id="googleStatus" class="status">Not connected</div>
-
-<button id="googleConnectButton" onclick="connectGoogle()">Connect Google Drive</button>
-
-<div id="googleAuthorization" class="hidden">
-<p>Open <a id="googleVerificationLink" href="https://www.google.com/device"
-target="_blank" rel="noopener noreferrer">Google device authorization</a>
-and enter this code:</p>
-<h2 id="googleUserCode"></h2>
+<div id="googleStatus" class="status">Checking authentication...</div>
+<p class="note">Google Drive authentication is managed through PG3x.
+Open the eisy Backup plugin dashboard and click <strong>Authenticate</strong>
+to connect your Google account.</p>
 </div>
 
 <p id="googleMessage" class="note"></p>
@@ -1419,72 +1320,13 @@ async function apiFetch(url,options={}){
 }
 
 
-let googlePollTimer=null;
-
-async function connectGoogle(){
- const message=document.getElementById('googleMessage');
- const button=document.getElementById('googleConnectButton');
- button.disabled=true;
- message.textContent='Requesting Google authorization...';
-
- try{
-  const r=await apiFetch('/api/google/start',{method:'POST'});
-  const d=await r.json();
-  if(!r.ok)throw new Error(d.detail||'Unable to start authorization');
-
-  document.getElementById('googleVerificationLink').href=d.verification_url;
-  document.getElementById('googleUserCode').textContent=d.user_code;
-  document.getElementById('googleAuthorization').classList.remove('hidden');
-  document.getElementById('googleStatus').textContent='Waiting for authorization';
-  message.textContent='Enter the code at Google, then return here.';
-
-  if(googlePollTimer)clearInterval(googlePollTimer);
-  googlePollTimer=setInterval(checkGoogleAuthorization,Math.max(5,d.interval)*1000);
- }catch(e){
-  message.textContent=e.message;
-  button.disabled=false;
- }
-}
-
-async function checkGoogleAuthorization(){
- if(!authenticatedSession){
-  clearInterval(googlePollTimer);
-  googlePollTimer=null;
-  return;
- }
-
- try{
-  const r=await apiFetch('/api/google/status');
-  const d=await r.json();
-  if(!r.ok)throw new Error(d.detail||'Authorization check failed');
-
-  if(d.status==='authorized'){
-   clearInterval(googlePollTimer);
-   googlePollTimer=null;
-   document.getElementById('googleStatus').textContent='Connected';
-   document.getElementById('googleAuthorization').classList.add('hidden');
-   document.getElementById('googleMessage').textContent='Google Drive connected successfully.';
-   document.getElementById('googleConnectButton').disabled=false;
-  }else if(['expired','expired_token','access_denied','idle'].includes(d.status)){
-   clearInterval(googlePollTimer);
-   googlePollTimer=null;
-   document.getElementById('googleMessage').textContent='Authorization ended: '+d.status;
-   document.getElementById('googleConnectButton').disabled=false;
-  }else if(d.status==='error'){
-   document.getElementById('googleMessage').textContent='Google authorization check failed. Retrying...';
-  }
- }catch(e){
-  document.getElementById('googleMessage').textContent=e.message;
- }
-}
-
 async function loadGoogleConnection(){
  try{
   const r=await apiFetch('/api/google/connection');
-  if(!r.ok)return;
+  if(!r.ok)throw new Error('Status unavailable');
   const d=await r.json();
   document.getElementById('googleStatus').textContent=
-   d.connected?'Connected':'Not connected';
+   d.connected?'Authenticated with Google':'Not authenticated';
  }catch(e){
   document.getElementById('googleStatus').textContent='Connection status unavailable';
  }
@@ -1907,7 +1749,7 @@ if __name__ == "__main__":
     uvicorn.run(
         app,
         host="0.0.0.0",
-        port=8769,
+        port=8768,
         ssl_certfile=str(cert),
         ssl_keyfile=str(key),
         access_log=False

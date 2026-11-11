@@ -66,7 +66,7 @@ def start_web_server(plugin_token=None):
     config = uvicorn.Config(
         app,
         host="0.0.0.0",
-        port=8769,
+        port=8768,
         ssl_certfile=str(cert),
         ssl_keyfile=str(key),
         access_log=False,
