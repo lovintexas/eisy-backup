@@ -75,7 +75,7 @@ recovery_lock = threading.Lock()
 DEFAULT_CONFIG = {
     "retention": 7,
     "google_drive_folder": "eisy Backups",
-    "google_auth_mode": "legacy",
+    "google_auth_mode": "pg3x",
     "usb_enabled": False,
     "usb_device": "",
     "usb_volume_id": "",
@@ -617,7 +617,11 @@ def update_config(data: ConfigUpdate, auth=Depends(authenticated)):
 
 def start_backup_job():
     """Start a backup from either IoX or the web interface."""
-    if not (google_drive.load_tokens(GOOGLE_AUTH_DIRECTORY) or {}).get("refresh_token"):
+    if not (
+        google_oauth_available()
+        if load_config().get("google_auth_mode") == "pg3x"
+        else bool((google_drive.load_tokens(GOOGLE_AUTH_DIRECTORY) or {}).get("refresh_token"))
+    ):
         raise RuntimeError("Connect Google Drive before backing up")
 
     with state_lock:
@@ -637,7 +641,11 @@ def start_backup_job():
 
 @app.post("/api/backup")
 def start_backup(auth=Depends(authenticated)):
-    if not (google_drive.load_tokens(GOOGLE_AUTH_DIRECTORY) or {}).get("refresh_token"):
+    if not (
+        google_oauth_available()
+        if load_config().get("google_auth_mode") == "pg3x"
+        else bool((google_drive.load_tokens(GOOGLE_AUTH_DIRECTORY) or {}).get("refresh_token"))
+    ):
         raise HTTPException(409, "Connect Google Drive before backing up")
     try:
         start_backup_job()
