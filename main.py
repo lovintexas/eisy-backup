@@ -113,7 +113,7 @@ atexit.register(stop_web_server)
 if __name__ == "__main__":
     try:
         polyglot = udi_interface.Interface([])
-        polyglot.start("1.3.0")
+        polyglot.start("1.3.1")
 
         isy = udi_interface.ISY(polyglot)
 
