@@ -148,7 +148,7 @@ class Controller(udi_interface.Node):
         import web_server
 
         value = int(command['value'])
-        if not 1 <= value <= 30:
+        if not 1 <= value <= 60:
             LOGGER.warning("Invalid retention value: %s", value)
             return
 
